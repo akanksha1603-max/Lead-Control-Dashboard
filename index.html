@@ -160,6 +160,7 @@ button{font-family:inherit;}
 /* ---------- Table ---------- */
 .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);}
 table.data{border-collapse:collapse;width:100%;font-size:12.5px;min-width:900px;}
+table.data.is-empty{min-width:0;}
 table.data thead th{
   text-align:left;background:var(--ink-2);color:#DCE0E6;font-weight:600;padding:9px 10px;
   position:sticky;top:0;white-space:nowrap;font-size:11.5px;letter-spacing:.2px;
@@ -354,15 +355,19 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         <div class="kpi-row" id="m2-kpis"></div>
         <div class="mini-note" style="margin:-4px 0 12px 2px;">Click a KPI, or any row in the tables below, to filter the lead-level detail table.</div>
         <div class="card">
-          <h2>Channel summary <small>Meta &amp; Google leads viewed collectively across all sub-sources — click a row to filter below</small></h2>
+          <h2>1 · Cost Centre / Area ownership <small>Who owns each area — click a row to filter below</small></h2>
+          <div id="m2-area-summary"></div>
+        </div>
+        <div class="card">
+          <h2>2 · Channel summary <small>Meta &amp; Google leads viewed collectively across all sub-sources — click a row to filter below</small></h2>
           <div id="m2-channel-summary"></div>
         </div>
         <div class="card">
-          <h2>Source-wise summary <small>New &amp; Not Connected counts per source — click a row to filter the detail table below</small></h2>
+          <h2>3 · Source-wise summary <small>New &amp; Not Connected counts per source — click a row to filter the detail table below</small></h2>
           <div id="m2-source-summary"></div>
         </div>
         <div class="card">
-          <h2>Sales Head / Member breakdown <small>Who is holding New &amp; Not Connected leads — click a row to filter the detail table below</small></h2>
+          <h2>4 · Sales Head / Team Member breakdown <small>Who is holding New &amp; Not Connected leads — click a row to filter the detail table below</small></h2>
           <div id="m2-person-summary"></div>
         </div>
         <div class="card">
@@ -374,7 +379,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           <div id="m2-aging-summary"></div>
         </div>
         <div class="card">
-          <h2>Lead-level detail</h2>
+          <h2>5 · Lead-level detail <small>Cost Centre, Source, Sales Head, Team Member, Days Since Assigned, Project, and Last Remark — all in one row</small></h2>
           <div class="filter-bar" id="m2-filters"></div>
           <div class="table-wrap"><table class="data" id="m2-table"></table></div>
           <div class="table-foot">
@@ -400,29 +405,38 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       </div>
 
       <div class="card">
-        <h2>1 · Upload both files</h2>
+        <h2>1 · Upload files</h2>
+        <div class="help-note">Both boxes accept multiple files at once — select every per-source file together (e.g. PPC, AJN, WOLF, GTF, XD, DMXD, MV) and they'll be combined into one dataset automatically. Exact duplicate uploads are skipped.</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:12px;">
+          <input type="checkbox" id="m3-agency-summary-toggle">
+          The agency file is a per-project summary sheet (already has a "Total Leads" count per project — like a City-wise Projects report) rather than one row per individual lead
+        </label>
         <div class="upload-grid">
           <div class="upload-box" id="m3-box-agency">
-            <div class="u-title">Agency Lead Generation File</div>
-            <div class="u-hint">Leads the agency reports as generated</div>
-            <input type="file" id="m3-file-agency" accept=".xlsx,.xls,.csv">
+            <div class="u-title">Agency Lead Generation File(s)</div>
+            <div class="u-hint">Leads the agency reports as generated — one file or several (e.g. per source)</div>
+            <input type="file" id="m3-file-agency" accept=".xlsx,.xls,.csv" multiple>
             <div class="u-status empty" id="m3-status-agency">No file uploaded</div>
           </div>
           <div class="upload-box" id="m3-box-crm">
-            <div class="u-title">CRM Lead Master File</div>
-            <div class="u-hint">Leads actually received in 4QT / LeadSquared</div>
-            <input type="file" id="m3-file-crm" accept=".xlsx,.xls,.csv">
+            <div class="u-title">CRM Lead Master File(s)</div>
+            <div class="u-hint">Leads actually received in 4QT / LeadSquared — one file or several (e.g. per source)</div>
+            <input type="file" id="m3-file-crm" accept=".xlsx,.xls,.csv" multiple>
             <div class="u-status empty" id="m3-status-crm">No file uploaded</div>
           </div>
         </div>
         <div class="btn-row" style="margin-top:14px;">
           <button class="btn btn-primary" id="m3-generate" disabled>Generate report</button>
-          <span class="mini-note">Both files are required.</span>
+          <span class="mini-note">Both sides are required.</span>
         </div>
       </div>
 
       <div id="m3-report" style="display:none;">
         <div class="kpi-row" id="m3-kpis"></div>
+        <div class="card" id="m3-match-summary-card" style="display:none;">
+          <h2>Project name matching <small>Agency project names rarely match CRM's exactly — this shows how each was matched, so you can sanity-check before trusting the numbers</small></h2>
+          <div id="m3-match-summary"></div>
+        </div>
         <div class="card">
           <h2>Report</h2>
           <div class="legend">
@@ -812,10 +826,24 @@ Utils.DEFAULT_LOCATION_MASTER = [
   {region:'Noida – Commercial', salesHead:['Pulkit Dhuria','Sethia','Chetan Gulati'], costCentre:['Pulkit Dhuria','Sethia','Chetan Gulati'], notes:'Commercial projects; projects/locations distributed among them', keywords:['noida commercial','commercial noida']},
   {region:'Rest of Noida', salesHead:['Pulkit Dhuria','Sethia','Chetan Gulati'], costCentre:['Pulkit Dhuria','Sethia','Chetan Gulati'], notes:'Different projects assigned based on location', keywords:[]},
 ];
+/* ---------- LeadSquared Region → Cost Centre lookup (explicit, per the user) ----------
+   LeadSquared exports have no Cost Centre column at all, so this fixed table
+   (confirmed by the person) is used instead of the general Location Master.
+   Regions with more than one name are genuinely split by project and can't
+   be auto-resolved to a single owner. */
+Utils.DEFAULT_LSQ_REGION_COST_CENTRE = {
+  'mumbai': ['Mayank Bisht','Sanjiv Tiwari - Mumbai'],
+  'kolkata': ['Santanu - Kolkata'],
+  'chennai': ['Santanu - Chennai'],
+  'hyderabad': ['Santanu - Hyderabad'],
+  'nri': ['Sanjiv Tiwari - NRI'],
+  'dubai': ['Sanjiv Tiwari - NRI'], // NRI and Dubai are the same desk/location
+};
 Utils.DEFAULT_SETTINGS = function(){
   return {
     sourceMaster: JSON.parse(JSON.stringify(Utils.DEFAULT_SOURCE_MASTER)),
     locationMaster: JSON.parse(JSON.stringify(Utils.DEFAULT_LOCATION_MASTER)),
+    lsqRegionCostCentre: JSON.parse(JSON.stringify(Utils.DEFAULT_LSQ_REGION_COST_CENTRE)),
     fuzzyThreshold: 0.72,
     pageSize: 50,
     performancePattern: 'meta|search ads|demand gen|video ads'
@@ -942,6 +970,49 @@ Utils.resolveLocation = function(text){
   return {candidates:[], single:null};
 };
 
+/* ---------- Project (BPL) contamination check ----------
+   BPL should only ever be Builder + Project + Location. If it accidentally
+   contains a Sales Head/Cost Centre Person name or a Source code (common when
+   an export concatenates extra fields into the project column), CRM+Project+
+   Source matching in Module 1 silently breaks. This flags it rather than
+   guessing how to clean it. */
+Utils.detectProjectContamination = function(projectText){
+  const t = Utils.normLoose(projectText);
+  if(!t) return {contaminated:false, matches:[]};
+  const matches = [];
+  Utils.Settings.sourceMaster.forEach(e=>{
+    [e.raw, e.canonical].forEach(v=>{
+      const vn = Utils.normLoose(v);
+      if(vn && vn.length>=3 && t.includes(vn)) matches.push(`Source code "${v}"`);
+    });
+  });
+  Utils.Settings.locationMaster.forEach(e=>{
+    (e.salesHead||[]).concat(e.costCentre||[]).forEach(name=>{
+      const nn = Utils.normLoose(name);
+      if(nn && nn.length>=4 && t.includes(nn)) matches.push(`Person name "${name}"`);
+    });
+  });
+  return {contaminated: matches.length>0, matches: Array.from(new Set(matches))};
+};
+
+/* ---------- Branch-field name/city extraction ----------
+   Some CRM exports encode "Person Name-City" in a single branch column
+   (e.g. 4QT's "Owner Branch" / "Handler Branch"). These split that apart
+   instead of guessing — the person is always the text before the last dash. */
+Utils.extractNameFromBranch = function(branchText){
+  const s = Utils.norm(branchText);
+  if(!s) return '';
+  if(!s.includes('-')) return s;
+  const parts = s.split('-');
+  return parts.slice(0, -1).join('-').trim();
+};
+Utils.extractCityFromBranch = function(branchText){
+  const s = Utils.norm(branchText);
+  if(!s || !s.includes('-')) return '';
+  const parts = s.split('-');
+  return parts[parts.length-1].trim();
+};
+
 /* ---------- Status normalization (New / Not Connected variants) ---------- */
 Utils.classifyStatus = function(rawStatus){
   const s = Utils.normLoose(rawStatus);
@@ -969,6 +1040,8 @@ Utils.COLUMN_ALIASES = {
   userName:     ['User Name','User','Owner (User Name)','CRM User','Enquiry Owner','Handled By','Lead Owner','Owner','Assigned To'],
   ageField:     ['Opportunity Age','Lead Age','Age (Days)','Days Old','Days Since Created'],
   followUpCount:['Follow Up Counter','Followup Counter','No Of Follow Ups','Follow Up Count','Number Of Followups','Follow Ups','Call Attempts','Counter'],
+  salesHeadBranch: ['Owner Branch'],
+  areaBranch:   ['Handler Branch'],
 };
 
 /* Detect best-matching header for each canonical field.
@@ -988,6 +1061,9 @@ Utils.detectColumns = function(headers, fieldList, rows){
   // headers reserved for the Status field must never double as Reason / Sales Remark,
   // even if an alias like "Sub Status" normalizes to a string that happens to contain "status"
   const STATUS_RESERVED = new Set(['status','stage','currentstatus','leadstatus','leadstage','disposition','opportunitystatus']);
+  // these branch-column fields are very specific (4QT's "Owner Branch" / "Handler Branch")
+  // and must never fall back to a generic "Branch" column via substring matching
+  const EXACT_ONLY_FIELDS = new Set(['salesHeadBranch','areaBranch']);
   fieldList.forEach(field=>{
     const aliases = Utils.COLUMN_ALIASES[field] || [field];
     const candidates = (field==='remarks' || field==='salesRemark')
@@ -1000,8 +1076,8 @@ Utils.detectColumns = function(headers, fieldList, rows){
       const hit = candidates.find(h=>h.key === aKey);
       if(hit){ found = hit.raw; break; }
     }
-    // then substring containment match
-    if(!found){
+    // then substring containment match (skipped for fields that require an exact match)
+    if(!found && !EXACT_ONLY_FIELDS.has(field)){
       for(const alias of aliases){
         const aKey = Utils.normKey(alias);
         const hit = candidates.find(h=>h.key.includes(aKey) || aKey.includes(h.key));
@@ -1046,7 +1122,7 @@ Utils.detectColumns = function(headers, fieldList, rows){
    this infers which system a lead belongs to from its project/location text. */
 Utils.CRM_STRUCTURE = {
   '4QT': ['noida','greater noida','gurugram','gurgaon','delhi','pune','bangalore','bengaluru'],
-  'LeadSquared': ['mumbai','hyderabad','chennai','nri','kolkata'],
+  'LeadSquared': ['mumbai','hyderabad','chennai','nri','kolkata','dubai'],
 };
 Utils.inferCrm = function(text){
   const t = Utils.normLoose(text);
@@ -1211,6 +1287,129 @@ FileBox.prototype._renderControls = function(){
   ctrl.querySelector('.fb-remove').addEventListener('click', function(){ self.clear(); });
 };
 
+/* ---------- Multi-file upload widget ----------
+   Like FileBox, but accepts several files at once (e.g. one CRM export per
+   source/agency) and combines them into a single row set, auto-picking the
+   most-data sheet in each file. Exact duplicate files (same name + size) are
+   silently deduped rather than double-counted. */
+function MultiFileBox(opts){
+  this.inputId = opts.inputId; this.boxId = opts.boxId; this.statusId = opts.statusId;
+  this.onChange = opts.onChange || null;
+  this.filesData = []; this.data = null;
+  const self = this;
+  document.getElementById(this.inputId).addEventListener('change', function(){
+    const files = Array.from(this.files || []);
+    if(files.length) self._loadAll(files);
+  });
+}
+MultiFileBox.prototype._readOne = function(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('Could not read '+file.name));
+    reader.onload = function(e){
+      try{
+        let wb;
+        if(file.name.toLowerCase().endsWith('.csv')) wb = XLSX.read(e.target.result, {type:'binary'});
+        else wb = XLSX.read(e.target.result, {type:'array'});
+        let bestSheet = wb.SheetNames[0], bestScore = -1;
+        const aoaBySheet = {};
+        wb.SheetNames.forEach(sn=>{
+          aoaBySheet[sn] = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:'', raw:false});
+          const nonBlank = aoaBySheet[sn].filter(r=>r.some(c=>Utils.norm(c)!=='')).length;
+          if(nonBlank > bestScore){ bestScore = nonBlank; bestSheet = sn; }
+        });
+        const aoa = aoaBySheet[bestSheet];
+        const hdrIdx = Utils.detectHeaderRow(aoa);
+        const headers = (aoa[hdrIdx]||[]).map((h,i)=> Utils.norm(h) || ('Column '+(i+1)));
+        const rows = [];
+        for(let r=hdrIdx+1; r<aoa.length; r++){
+          const arr = aoa[r];
+          if(!arr || !arr.some(c=>Utils.norm(c)!=='')) continue;
+          const obj = {}; headers.forEach((h,i)=>{ obj[h] = arr[i]!==undefined ? arr[i] : ''; });
+          rows.push(obj);
+        }
+        resolve({fileName:file.name, sheet:bestSheet, headers, rows});
+      }catch(err){ reject(err); }
+    };
+    if(file.name.toLowerCase().endsWith('.csv')) reader.readAsBinaryString(file);
+    else reader.readAsArrayBuffer(file);
+  });
+};
+MultiFileBox.prototype._loadAll = async function(files){
+  const box = document.getElementById(this.boxId);
+  const statusEl = document.getElementById(this.statusId);
+  if(statusEl){ statusEl.textContent = `Reading ${files.length} file(s)… large files can take several seconds`; statusEl.classList.remove('empty'); }
+  if(box) box.classList.add('loading');
+
+  const parsed = [];
+  for(const file of files){
+    try{ parsed.push(await this._readOne(file)); }
+    catch(err){ Utils.toast('Could not read '+file.name+' — unrecognized file format'); }
+  }
+
+  // Dedupe by CONTENT, not filename — two uploads of the same export can easily end up
+  // with different filenames (browsers append "(1)" etc. on re-download), so compare
+  // row count plus the first and last row's actual values instead.
+  const seen = new Set(); const deduped = []; let skipped = 0;
+  parsed.forEach(p=>{
+    const fingerprint = p.rows.length + '|' + JSON.stringify(p.rows[0]||{}) + '|' + JSON.stringify(p.rows[p.rows.length-1]||{});
+    if(seen.has(fingerprint)){ skipped++; return; }
+    seen.add(fingerprint); deduped.push(p);
+  });
+  if(skipped > 0) Utils.toast(`Skipped ${skipped} duplicate file(s) with identical content`);
+
+  this.filesData = deduped;
+  this._finalize();
+};
+MultiFileBox.prototype._finalize = function(){
+  const box = document.getElementById(this.boxId);
+  const statusEl = document.getElementById(this.statusId);
+  box.classList.remove('loading');
+  if(!this.filesData.length){
+    this.data = null;
+    if(statusEl){ statusEl.textContent = 'No file uploaded'; statusEl.classList.add('empty'); }
+    box.classList.remove('filled');
+    if(this.onChange) this.onChange(null);
+    return;
+  }
+  // Union of headers across all files, so files with slightly different columns still combine cleanly
+  const headerSet = [];
+  this.filesData.forEach(f=>f.headers.forEach(h=>{ if(!headerSet.includes(h)) headerSet.push(h); }));
+  const rows = [];
+  this.filesData.forEach(f=>{
+    f.rows.forEach(r=>{
+      const merged = {};
+      headerSet.forEach(h=>{ merged[h] = r[h]!==undefined ? r[h] : ''; });
+      rows.push(merged);
+    });
+  });
+
+  statusEl.innerHTML = `<strong>${this.filesData.length} file(s) combined — ${rows.length} total data rows</strong><br>` +
+    this.filesData.map(f=>`${Utils.escapeHtml(f.fileName)} (sheet "${Utils.escapeHtml(f.sheet)}", ${f.rows.length} rows)`).join('<br>');
+  statusEl.classList.remove('empty');
+  box.classList.add('filled');
+
+  let ctrl = box.querySelector('.fb-controls');
+  if(!ctrl){ ctrl = document.createElement('div'); ctrl.className='fb-controls'; box.appendChild(ctrl); }
+  ctrl.innerHTML = `<div class="fb-row"><button class="btn btn-sm fb-remove" type="button">✕ Remove all</button></div>`;
+  const self = this;
+  ctrl.querySelector('.fb-remove').addEventListener('click', function(){ self.clear(); });
+
+  this.data = {fileName: this.filesData.map(f=>f.fileName).join(', '), headers: headerSet, rows};
+  if(this.onChange) this.onChange(this.data);
+};
+MultiFileBox.prototype.clear = function(){
+  const inputEl = document.getElementById(this.inputId);
+  if(inputEl) inputEl.value = '';
+  this.filesData = []; this.data = null;
+  const box = document.getElementById(this.boxId);
+  if(box){ box.classList.remove('filled','loading'); const ctrl = box.querySelector('.fb-controls'); if(ctrl) ctrl.remove(); }
+  const statusEl = document.getElementById(this.statusId);
+  if(statusEl){ statusEl.textContent = 'No file uploaded'; statusEl.classList.add('empty'); }
+  if(this.onChange) this.onChange(null);
+  Utils.toast('Files removed');
+};
+
 /* ---------- File parsing (SheetJS) ---------- */
 Utils.readFile = function(file){
   return new Promise((resolve, reject)=>{
@@ -1324,6 +1523,7 @@ function DataTable(opts){
   this.searchKeys = opts.searchKeys || [];
   this.pageSize = opts.pageSize || (Utils.Settings && Utils.Settings.pageSize) || 50;
   this.filename = opts.filename || 'report.xlsx';
+  this.onChange = opts.onChange || null;
   this.page = 1;
   this.filters = {};
   this.searchTerm = '';
@@ -1381,7 +1581,10 @@ DataTable.prototype.setFilters = function(filterObj, extend){
   if(searchEl) searchEl.value = '';
   this.render();
   const card = document.getElementById(this.prefix+'-table');
-  if(card) card.closest('.card').scrollIntoView({behavior:'smooth', block:'start'});
+  if(card){
+    const wrap = card.closest('.card');
+    if(wrap) wrap.scrollIntoView({behavior:'smooth', block:'start'});
+  }
 };
 
 DataTable.prototype._bindButtons = function(){
@@ -1432,18 +1635,16 @@ DataTable.prototype.render = function(){
   const pageRows = filtered.slice(start, start+this.pageSize);
 
   const table = document.getElementById(this.prefix+'-table');
+  if(!table) return; // defensive guard — should never happen since the table element is never removed
   if(total === 0){
-    table.innerHTML = '';
-    table.parentElement.innerHTML = `<div class="empty-state"><div class="e-title">No records match</div>Adjust or clear filters, or check the uploaded files.</div>`;
+    // Render the empty state INSIDE the table (never replace/remove the table element itself,
+    // or its id becomes unresolvable on the next render — that was the source of the
+    // "Cannot read properties of null (reading 'parentElement')" bug).
+    table.classList.add('is-empty');
+    const colCount = Math.max(1, this.columns.length);
+    table.innerHTML = `<tbody><tr><td colspan="${colCount}"><div class="empty-state"><div class="e-title">No records match</div>Adjust or clear filters, or check the uploaded files.</div></td></tr></tbody>`;
   } else {
-    if(!table.parentElement.querySelector('table')){
-      // was replaced by empty state, restore
-      table.parentElement.innerHTML = '';
-      const t = document.createElement('table');
-      t.className = 'data'; t.id = this.prefix+'-table';
-      table.parentElement.appendChild(t);
-    }
-    const tbl = document.getElementById(this.prefix+'-table');
+    table.classList.remove('is-empty');
     let thead = '<thead><tr>' + this.columns.map(c=>`<th>${Utils.escapeHtml(c.label)}</th>`).join('') + '</tr></thead>';
     let tbody = '<tbody>' + pageRows.map(r=>{
       return '<tr>' + this.columns.map(c=>{
@@ -1455,11 +1656,13 @@ DataTable.prototype.render = function(){
         return `<td class="${c.wrap?'wrap':''}">${Utils.escapeHtml(v)}</td>`;
       }).join('') + '</tr>';
     }).join('') + '</tbody>';
-    tbl.innerHTML = thead + tbody;
+    table.innerHTML = thead + tbody;
   }
 
+  const activeFilterCount = Object.keys(this.filters).filter(k=>this.filters[k]).length + ((this.searchTerm && this.searchTerm.trim()!=='') ? 1 : 0);
+  const filterNote = activeFilterCount > 0 ? ` · ${activeFilterCount} filter${activeFilterCount>1?'s':''} applied` : '';
   const countEl = document.getElementById(this.prefix+'-count');
-  if(countEl) countEl.textContent = total === 0 ? '0 records' : `Showing ${start+1}–${Math.min(start+this.pageSize,total)} of ${total} records`;
+  if(countEl) countEl.textContent = (total === 0 ? '0 records' : `Showing ${start+1}–${Math.min(start+this.pageSize,total)} of ${total} records`) + filterNote;
 
   const pager = document.getElementById(this.prefix+'-pager');
   if(pager){
@@ -1470,6 +1673,10 @@ DataTable.prototype.render = function(){
     if(prevBtn) prevBtn.addEventListener('click', ()=>{ self.page--; self.render(); });
     if(nextBtn) nextBtn.addEventListener('click', ()=>{ self.page++; self.render(); });
   }
+
+  // Lets the caller (e.g. summary cards above the table) stay in sync with whatever
+  // is currently filtered, instead of only ever reflecting the full unfiltered dataset.
+  if(this.onChange) this.onChange(filtered);
 };
 Utils.pillHtml = function(result){
   const map = {
@@ -1477,7 +1684,8 @@ Utils.pillHtml = function(result){
     'WRONG MAPPING':'pill-red','UNEXPLAINED GAP':'pill-red',
     'POSSIBLE MATCH':'pill-amber','UNABLE TO VALIDATE':'pill-amber',
     'EXPLAINED GAP':'pill-amber','REVIEW REQUIRED':'pill-amber',
-    'PERFORMANCE LEAD - SALES ATTENTION':'pill-flag'
+    'PERFORMANCE LEAD - SALES ATTENTION':'pill-flag',
+    'Clean':'pill-green','Contaminated':'pill-red'
   };
   const cls = map[result] || 'pill-amber';
   return `<span class="pill ${cls}">${Utils.escapeHtml(result)}</span>`;
@@ -1553,8 +1761,10 @@ M1.generate = async function(){
   // Build CRM index keyed by CRM|BPL(normalized)|Source(canonical)
   const crmIndex = {}; // key -> array of {costCentre, salesHead, projectRaw}
   const crmBySourceCrm = {}; // "crm|sourceCanonical" -> [{bplNorm, ...}] for fuzzy search
+  let crmContaminatedCount = 0;
   M1.crm.rows.forEach(row=>{
     const project = Utils.val(row, crmMap.project);
+    if(Utils.detectProjectContamination(project).contaminated) crmContaminatedCount++;
     const locationText = Utils.val(row, crmMap.location);
     const crm = Utils.val(row, crmMap.crm) || Utils.inferCrm(locationText) || Utils.inferCrm(project) || '';
     const sourceRaw = Utils.val(row, crmMap.source);
@@ -1580,13 +1790,22 @@ M1.generate = async function(){
     let expectedCostCentre = Utils.prettifyPersonName(Utils.val(row, oursMap.costCentre));
     const expectedUserName = Utils.prettifyPersonName(Utils.val(row, oursMap.userName));
     const resolvedSource = Utils.resolveSource(sourceRaw);
+    const contamination = Utils.detectProjectContamination(project);
 
     const base = {
       crm, project, source: resolvedSource.canonical || sourceRaw, sourceCategory: resolvedSource.category,
       agency, salesHead, expectedCostCentre, expectedUserName, expectedSource:'Mapping file',
       actualCostCentre:'', actualUserName:'', actualSalesHead:'', date:'',
+      projectQuality: contamination.contaminated ? 'Contaminated' : 'Clean',
+      projectQualityDetail: contamination.matches.join('; '),
       result:'', reason:'', shouldBeMappedTo:'', action:''
     };
+
+    if(contamination.contaminated){
+      base.result = 'UNABLE TO VALIDATE'; base.reason = 'Project Name Contains Non-BPL Text';
+      base.action = `Project Name (BPL) should only be Builder + Project + Location — remove ${contamination.matches.join(' and ')} from it and re-upload.`;
+      return base;
+    }
 
     if(Utils.isBlank(sourceRaw)){
       base.result = 'UNABLE TO VALIDATE'; base.reason = 'Source Missing';
@@ -1686,10 +1905,10 @@ M1.generate = async function(){
     return base;
   });
 
-  M1.buildReport(out);
+  M1.buildReport(out, crmContaminatedCount);
 };
 
-M1.buildReport = function(rows){
+M1.buildReport = function(rows, crmContaminatedCount){
   document.getElementById('m1-report').style.display = 'block';
 
   const total = rows.length;
@@ -1697,6 +1916,7 @@ M1.buildReport = function(rows){
   const wrong = rows.filter(r=>r.result==='WRONG MAPPING').length;
   const possible = rows.filter(r=>r.result==='POSSIBLE MATCH').length;
   const unable = rows.filter(r=>r.result==='UNABLE TO VALIDATE').length;
+  const contaminated = rows.filter(r=>r.projectQuality==='Contaminated').length;
 
   document.getElementById('m1-kpis').innerHTML = `
     <div class="kpi tone-accent" id="m1-kpi-total"><div class="k-label">Total mapping records checked</div><div class="k-value">${total}</div></div>
@@ -1704,12 +1924,18 @@ M1.buildReport = function(rows){
     <div class="kpi tone-red clickable" id="m1-kpi-wrong"><div class="k-label">Wrong mapping</div><div class="k-value">${wrong}</div></div>
     <div class="kpi tone-amber clickable" id="m1-kpi-possible"><div class="k-label">Possible match</div><div class="k-value">${possible}</div></div>
     <div class="kpi tone-amber clickable" id="m1-kpi-unable"><div class="k-label">Unable to validate</div><div class="k-value">${unable}</div></div>
+    <div class="kpi tone-red clickable" id="m1-kpi-contaminated"><div class="k-label">Project name contains team head/source</div><div class="k-value">${contaminated}</div></div>
   `;
+  if(crmContaminatedCount > 0){
+    Utils.toast(`Heads up: ${crmContaminatedCount} CRM Master row(s) also have a non-BPL project name`);
+  }
 
   const columns = [
     {key:'crm', label:'CRM'},
     {key:'date', label:'Date'},
     {key:'project', label:'Project Name (BPL)', wrap:true},
+    {key:'projectQuality', label:'Project Name Quality', pill:true},
+    {key:'projectQualityDetail', label:'Contamination Detail', wrap:true},
     {key:'source', label:'Source/Sub-source'},
     {key:'agency', label:'Agency Name'},
     {key:'salesHead', label:'Sales Head'},
@@ -1727,6 +1953,7 @@ M1.buildReport = function(rows){
     {key:'date', label:'Duration', type:'daterange'},
     {key:'crm', label:'CRM'},
     {key:'project', label:'Project BPL'},
+    {key:'projectQuality', label:'Project Name Quality'},
     {key:'source', label:'Source/Sub-source'},
     {key:'agency', label:'Agency Name'},
     {key:'salesHead', label:'Sales Head'},
@@ -1745,6 +1972,7 @@ M1.buildReport = function(rows){
   document.getElementById('m1-kpi-wrong').addEventListener('click', ()=> M1.table.setFilters({result:'WRONG MAPPING'}));
   document.getElementById('m1-kpi-possible').addEventListener('click', ()=> M1.table.setFilters({result:'POSSIBLE MATCH'}));
   document.getElementById('m1-kpi-unable').addEventListener('click', ()=> M1.table.setFilters({result:'UNABLE TO VALIDATE'}));
+  document.getElementById('m1-kpi-contaminated').addEventListener('click', ()=> M1.table.setFilters({projectQuality:'Contaminated'}));
 };
 
 </script>
@@ -1777,43 +2005,60 @@ M2._checkReady = function(){
 
 const M2_FIELDS = [
   {key:'project', label:'Project', required:true},
-  {key:'salesHead', label:'Sales Head / Team Head (leave unmapped to auto-fill from Location Master)', required:false},
-  {key:'costCentre', label:'Member (Cost Centre Person / User / Lead Owner)', required:true},
+  {key:'salesHead', label:'Sales Head (direct column, if this CRM has one)', required:false},
+  {key:'salesHeadBranch', label:'Sales Head Branch column (e.g. 4QT "Owner Branch" — Name-City combined)', required:false},
+  {key:'areaBranch', label:'Cost Centre / Area Branch column (e.g. 4QT "Handler Branch" — Name-City combined)', required:false},
+  {key:'costCentre', label:'Team Member (individual handling the lead, e.g. "Handled By" / "Owner (User Name)")', required:true},
   {key:'source', label:'Source/Sub-source', required:true},
   {key:'agency', label:'Agency Name', required:false},
   {key:'status', label:'Status', required:true},
   {key:'remarks', label:'Reason (categorized, e.g. Dump Reason / Sub Status)', required:false},
-  {key:'salesRemark', label:'Last Remark / Follow-up note from Sales (free text)', required:false},
-  {key:'date', label:'Date (Assigned / Created)', required:false},
+  {key:'salesRemark', label:'Last Remark / Follow-up note from Sales (free text — used as the Not Connected reason)', required:false},
+  {key:'date', label:'Date Assigned (e.g. Enquiry Date / Created On)', required:false},
   {key:'ageField', label:'Lead Age in days (optional — e.g. "Opportunity Age"; calculated from Date if not present)', required:false},
   {key:'followUpCount', label:'Follow-up Count (optional — e.g. "Follow Up Counter"; left blank if not tracked)', required:false},
   {key:'leadName', label:'Lead Name (optional, helps identify the lead)', required:false},
-  {key:'location', label:'Location / Region / Branch (used to identify CRM system and default Sales Head)', required:false},
+  {key:'location', label:'Region (e.g. LeadSquared "Region" — used to look up Cost Centre when there\'s no branch column)', required:false},
   {key:'crm', label:'CRM (leave unmapped to auto-identify by location)', required:false},
 ];
 
 M2.generate = async function(){
   const leads = [];
+  const excludeStats = {count:0};
 
   if(M2.qt){
     const detected = Utils.detectColumns(M2.qt.headers, M2_FIELDS.map(f=>f.key), M2.qt.rows);
     const map = await Utils.resolveMapping('Map columns — 4QT CRM Master','Confirm which column holds each field. If this file also contains LeadSquared rows, leave CRM unmapped — it will be identified from the project location instead.', M2_FIELDS, M2.qt.headers, detected);
-    if(map) M2._processFile(M2.qt, map, '4QT', leads);
+    if(map) M2._processFile(M2.qt, map, '4QT', leads, excludeStats);
   }
   if(M2.lsq){
     const detected = Utils.detectColumns(M2.lsq.headers, M2_FIELDS.map(f=>f.key), M2.lsq.rows);
     const map = await Utils.resolveMapping('Map columns — LeadSquared CRM Master','Confirm which column holds each field. If this file also contains 4QT rows, leave CRM unmapped — it will be identified from the project location instead.', M2_FIELDS, M2.lsq.headers, detected);
-    if(map) M2._processFile(M2.lsq, map, 'LeadSquared', leads);
+    if(map) M2._processFile(M2.lsq, map, 'LeadSquared', leads, excludeStats);
   }
 
-  M2.buildReport(leads);
+  M2.buildReport(leads, excludeStats.count);
 };
 
-M2._processFile = function(file, map, defaultCrmLabel, leads){
+/* Project names ending in a LeadSquared city (per BPL format — location is the
+   last part of the project name) don't belong in the 4QT report even though
+   they showed up in the 4QT export — 4QT only owns Noida/Gurugram/Delhi/Pune/
+   Bangalore. Excluded, not relabeled, per the person's instruction. */
+Utils.LSQ_CITY_SUFFIX_RE = new RegExp('\\b(' + Utils.CRM_STRUCTURE.LeadSquared.join('|') + ')\\s*$', 'i');
+
+M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
   const mergedMode = !!(document.getElementById('m2-merged-toggle') && document.getElementById('m2-merged-toggle').checked);
   file.rows.forEach(row=>{
     const project = Utils.val(row, map.project);
-    let salesHead = Utils.prettifyPersonName(Utils.val(row, map.salesHead));
+
+    // Skip 4QT rows whose project location belongs to LeadSquared (Mumbai/Hyderabad/
+    // Chennai/NRI/Kolkata), identified from the end of the BPL-formatted project name —
+    // 4QT only owns Noida/Gurugram/Delhi/Pune/Bangalore.
+    if(defaultCrmLabel === '4QT' && Utils.LSQ_CITY_SUFFIX_RE.test(project)){
+      if(excludeStats) excludeStats.count++;
+      return;
+    }
+
     const costCentre = Utils.prettifyPersonName(Utils.val(row, map.costCentre));
     const sourceRaw = Utils.val(row, map.source);
     const agency = Utils.val(row, map.agency);
@@ -1833,15 +2078,43 @@ M2._processFile = function(file, map, defaultCrmLabel, leads){
     const resolved = Utils.resolveSource(sourceRaw);
     const isPerformance = Utils.isPerformanceCategory(resolved.category);
 
-    if(Utils.isBlank(salesHead) && !Utils.isBlank(locationText) && map.location && Utils.normKey(map.location).includes('branch') && locationText.includes('-')){
-      // Some CRM exports encode "Person Name-City" in a single Branch column — extract the name directly
-      const parts = locationText.split('-');
-      const namePart = parts.slice(0, -1).join('-').trim();
-      if(namePart) salesHead = namePart;
+    // Sales Head: direct column first; else a "Name-City" branch column (e.g. 4QT's Owner Branch);
+    // else a last-resort Location Master default, clearly labeled as such.
+    let salesHead = Utils.prettifyPersonName(Utils.val(row, map.salesHead));
+    let usedLsqCostCentreForSalesHead = false;
+    if(Utils.isBlank(salesHead) && map.salesHeadBranch){
+      const ownerBranch = Utils.val(row, map.salesHeadBranch);
+      if(!Utils.isBlank(ownerBranch)) salesHead = Utils.extractNameFromBranch(ownerBranch);
     }
-    if(Utils.isBlank(salesHead)){
-      const loc = Utils.resolveLocation(locationText || project);
-      if(loc.single && loc.single.salesHead.length===1) salesHead = loc.single.salesHead[0] + ' (Location default)';
+
+    // Area / Cost Centre ownership: a "Name-City" branch column (e.g. 4QT's Handler Branch) is
+    // authoritative when present. Otherwise, for CRMs with no Cost Centre column at all (LeadSquared),
+    // use the confirmed Region → Cost Centre table. Falls back to the general Location Master only
+    // if neither applies.
+    let areaCostCentre, areaRegion;
+    const handlerBranch = map.areaBranch ? Utils.val(row, map.areaBranch) : '';
+    if(!Utils.isBlank(handlerBranch)){
+      areaCostCentre = Utils.extractNameFromBranch(handlerBranch);
+      areaRegion = Utils.extractCityFromBranch(handlerBranch);
+    } else {
+      const regionKey = Utils.normLoose(locationText);
+      const lsqEntry = regionKey ? Utils.Settings.lsqRegionCostCentre[regionKey] : null;
+      if(lsqEntry){
+        areaCostCentre = lsqEntry.length===1 ? lsqEntry[0] : ('Ambiguous — ' + lsqEntry.join(' / '));
+        areaRegion = locationText;
+      } else {
+        const locRes = Utils.resolveLocation(locationText || project);
+        if(locRes.single){ areaCostCentre = locRes.single.costCentre.join(' / '); areaRegion = locRes.single.region; }
+        else if(locRes.candidates.length){ areaCostCentre = 'Ambiguous — ' + Array.from(new Set(locRes.candidates.flatMap(c=>c.costCentre))).join(' / '); areaRegion = locRes.candidates.map(c=>c.region).join(' / '); }
+        else { areaCostCentre = 'Unknown'; areaRegion = ''; }
+      }
+    }
+
+    // LeadSquared has no distinct Sales Head field or table — as a working assumption,
+    // when nothing else resolved a Sales Head, use the same person as the Cost Centre.
+    if(Utils.isBlank(salesHead) && !Utils.isBlank(areaCostCentre) && areaCostCentre!=='Unknown'){
+      salesHead = areaCostCentre;
+      usedLsqCostCentreForSalesHead = true;
     }
 
     // CRM system: the upload box's own label is authoritative for a clean single-CRM file.
@@ -1861,14 +2134,17 @@ M2._processFile = function(file, map, defaultCrmLabel, leads){
     }
 
     leads.push({
-      crm, date, leadName, project, salesHead,
+      crm, date, leadName, project,
+      salesHead: salesHead || '(unassigned)', salesHeadIsAssumed: usedLsqCostCentreForSalesHead,
       costCentre: costCentre || '(unassigned)',
+      areaCostCentre, areaRegion,
       source: resolved.canonical || sourceRaw, sourceCategory: resolved.category,
       channel: Utils.classifyChannel(resolved.category), agency,
       originalStatus, statusClass,
       statusLabel: statusClass==='new' ? 'New' : 'Not Connected',
       remarks: remarks || (statusClass==='not_connected' ? 'Not specified — ask CRM/sales for a reason code' : ''),
       salesRemark: salesRemark || '',
+      notConnectedReason: statusClass==='not_connected' ? (salesRemark || remarks || 'Not specified — ask CRM/sales for a reason code') : '',
       daysInStatus, agingBucket: Utils.agingBucket(daysInStatus),
       followUpCount: Utils.isBlank(followUpCount) ? '' : followUpCount,
       isPerformance,
@@ -1877,14 +2153,63 @@ M2._processFile = function(file, map, defaultCrmLabel, leads){
   });
 };
 
-M2.buildReport = function(leads){
+M2.buildReport = function(leads, excludedCount){
   document.getElementById('m2-report').style.display = 'block';
+  M2._excludedCount = excludedCount || 0;
+
+  const columns = [
+    {key:'crm', label:'CRM'},
+    {key:'areaCostCentre', label:'Cost Centre Person (Area)'},
+    {key:'areaRegion', label:'Region'},
+    {key:'source', label:'Source/Sub-source'},
+    {key:'channel', label:'Channel'},
+    {key:'salesHead', label:'Sales Head'},
+    {key:'costCentre', label:'Team Member (Owner)'},
+    {key:'statusLabel', label:'Status'},
+    {key:'daysInStatus', label:'Days Since Assigned'},
+    {key:'project', label:'Project', wrap:true},
+    {key:'notConnectedReason', label:'Reason (Not Connected — Last Remark)', wrap:true},
+    {key:'remarks', label:'Categorized Reason', wrap:true},
+    {key:'date', label:'Date Assigned'},
+    {key:'followUpCount', label:'Follow-up Count'},
+    {key:'leadName', label:'Lead Name'},
+    {key:'originalStatus', label:'Original CRM Status'},
+    {key:'flag', label:'Sales Follow-up Flag', pill:true},
+  ];
+  const filterDefs = [
+    {key:'date', label:'Date', type:'daterange'},
+    {key:'crm', label:'CRM'},
+    {key:'areaCostCentre', label:'Cost Centre Person (Area)'},
+    {key:'project', label:'Project'},
+    {key:'channel', label:'Channel'},
+    {key:'source', label:'Source/Sub-source'},
+    {key:'salesHead', label:'Sales Head'},
+    {key:'costCentre', label:'Team Member (Owner)'},
+    {key:'statusLabel', label:'New / Not Connected'},
+    {key:'agingBucket', label:'Lead Age'},
+    {key:'originalStatus', label:'Original Status'},
+    {key:'flag', label:'Sales Follow-up Flag'},
+  ];
+  M2._columns = columns;
+
+  // onChange fires on every render (including the first, with no filters active yet) so the
+  // summary cards above the table always reflect exactly what's currently filtered — never a
+  // stale full-dataset view once the person starts narrowing things down.
+  M2.table = new DataTable({
+    prefix:'m2', columns:columns, rows:leads, filterDefs:filterDefs,
+    filename:'new_not_connected_followup.xlsx',
+    onChange: function(filteredRows){ M2.renderSummaries(filteredRows); }
+  });
+};
+
+M2.renderSummaries = function(leads){
+  const NO_REASON_TEXT = 'Not specified — ask CRM/sales for a reason code';
+  const excludedCount = M2._excludedCount || 0;
 
   const perfLeads = leads.filter(l=>l.isPerformance);
   const newPerf = perfLeads.filter(l=>l.statusClass==='new').length;
   const ncPerf = perfLeads.filter(l=>l.statusClass==='not_connected').length;
   const affectedSources = new Set(perfLeads.map(l=>Utils.normLoose(l.source))).size;
-  const NO_REASON_TEXT = 'Not specified — ask CRM/sales for a reason code';
   const noReasonCount = leads.filter(l=>l.statusClass==='not_connected' && l.remarks===NO_REASON_TEXT).length;
   const staleNC = leads.filter(l=>l.statusClass==='not_connected' && (l.agingBucket==='8–14 days' || l.agingBucket==='15–30 days' || l.agingBucket==='30+ days')).length;
 
@@ -1894,9 +2219,46 @@ M2.buildReport = function(leads){
     <div class="kpi tone-amber"><div class="k-label">Affected sources</div><div class="k-value">${affectedSources}</div></div>
     <div class="kpi tone-red clickable" id="m2-kpi-stale"><div class="k-label">Not Connected, 8+ days old</div><div class="k-value">${staleNC}</div></div>
     <div class="kpi tone-amber clickable" id="m2-kpi-noreason"><div class="k-label">Not Connected, no reason on file</div><div class="k-value">${noReasonCount}</div></div>
+    ${excludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">Excluded from 4QT (LeadSquared territory)</div><div class="k-value">${excludedCount}</div></div>` : ''}
   `;
+  document.getElementById('m2-kpi-newperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'New'}));
+  document.getElementById('m2-kpi-ncperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'Not Connected'}));
+  document.getElementById('m2-kpi-noreason').addEventListener('click', ()=> M2.table.setFilters({remarks:NO_REASON_TEXT, statusLabel:'Not Connected'}));
+  document.getElementById('m2-kpi-stale').addEventListener('click', ()=>{
+    M2.table.setFilters({statusLabel:'Not Connected'});
+    Utils.toast('Filtered to Not Connected — sort/scan the Days Since Assigned column, or click an Aging row above for a specific range');
+  });
 
-  // ---- Channel summary: Meta and Google leads viewed collectively across all their sub-sources ----
+  // ---- STEP 1: Area / Cost Centre ownership summary — who owns each area, first ----
+  const byArea = {};
+  leads.forEach(l=>{
+    const key = l.areaCostCentre;
+    if(!byArea[key]) byArea[key] = {areaCostCentre:key, regions:new Set(), newCount:0, ncCount:0};
+    if(l.areaRegion) byArea[key].regions.add(l.areaRegion);
+    if(l.statusClass==='new') byArea[key].newCount++;
+    if(l.statusClass==='not_connected') byArea[key].ncCount++;
+  });
+  const areaRows = Object.values(byArea).map(r=>({...r, region: Array.from(r.regions).join(', ')})).sort((a,b)=> (b.newCount+b.ncCount) - (a.newCount+a.ncCount));
+  const areaEl = document.getElementById('m2-area-summary');
+  if(areaRows.length){
+    areaEl.innerHTML = `<table class="attach-table">
+      <tr><th>Cost Centre Person (Area)</th><th>Region(s)</th><th>New</th><th>Not Connected</th><th>Total</th></tr>
+      ${areaRows.map((r,i)=>`<tr class="clickable-row" data-area-idx="${i}">
+        <td><strong>${Utils.escapeHtml(r.areaCostCentre)}</strong></td>
+        <td>${Utils.escapeHtml(r.region||'—')}</td>
+        <td>${r.newCount}</td>
+        <td>${r.ncCount}</td>
+        <td>${r.newCount+r.ncCount}</td>
+      </tr>`).join('')}
+    </table>`;
+    areaEl.querySelectorAll('tr[data-area-idx]').forEach(tr=>{
+      tr.addEventListener('click', ()=> M2.table.setFilters({areaCostCentre: areaRows[+tr.dataset.areaIdx].areaCostCentre}));
+    });
+  } else {
+    areaEl.innerHTML = `<div class="empty-state">No New / Not Connected leads found in the uploaded file(s).</div>`;
+  }
+
+  // ---- STEP 2: Channel summary: Meta and Google leads viewed collectively across all their sub-sources ----
   const byChannel = {};
   leads.forEach(l=>{
     const key = l.channel;
@@ -1954,31 +2316,67 @@ M2.buildReport = function(leads){
     summaryEl.innerHTML = `<div class="empty-state">No New / Not Connected leads found in the uploaded file(s).</div>`;
   }
 
-  // ---- Sales Head / Member breakdown: who is holding New / Not Connected leads ----
-  const byPerson = {};
+  // ---- Sales Head / Team Member breakdown, grouped with a download button per Sales Head ----
+  const bySalesHead = {};
   leads.forEach(l=>{
-    const key = (l.salesHead||'(unassigned)') + '||' + l.costCentre;
-    if(!byPerson[key]) byPerson[key] = {salesHead:l.salesHead||'(unassigned)', member:l.costCentre, newCount:0, ncCount:0};
-    if(l.statusClass==='new') byPerson[key].newCount++;
-    if(l.statusClass==='not_connected') byPerson[key].ncCount++;
+    const sh = l.salesHead || '(unassigned)';
+    if(!bySalesHead[sh]) bySalesHead[sh] = {salesHead:sh, isAssumed:l.salesHeadIsAssumed, members:{}, newCount:0, ncCount:0};
+    const grp = bySalesHead[sh];
+    if(l.statusClass==='new') grp.newCount++;
+    if(l.statusClass==='not_connected') grp.ncCount++;
+    const mk = l.costCentre;
+    if(!grp.members[mk]) grp.members[mk] = {member:mk, newCount:0, ncCount:0};
+    if(l.statusClass==='new') grp.members[mk].newCount++;
+    if(l.statusClass==='not_connected') grp.members[mk].ncCount++;
   });
-  const personRows = Object.values(byPerson).sort((a,b)=> (b.newCount+b.ncCount) - (a.newCount+a.ncCount));
+  const salesHeadGroups = Object.values(bySalesHead).sort((a,b)=> (b.newCount+b.ncCount) - (a.newCount+a.ncCount));
   const personEl = document.getElementById('m2-person-summary');
-  if(personRows.length){
-    personEl.innerHTML = `<table class="attach-table">
-      <tr><th>Sales Head / Team Head</th><th>Member (User)</th><th>New</th><th>Not Connected</th><th>Total</th></tr>
-      ${personRows.map((r,i)=>`<tr class="clickable-row" data-p-idx="${i}">
-        <td>${Utils.escapeHtml(r.salesHead)}</td>
-        <td>${Utils.escapeHtml(r.member)}</td>
-        <td>${r.newCount}</td>
-        <td>${r.ncCount}</td>
-        <td>${r.newCount+r.ncCount}</td>
-      </tr>`).join('')}
-    </table>`;
-    personEl.querySelectorAll('tr[data-p-idx]').forEach(tr=>{
-      tr.addEventListener('click', ()=>{
-        const row = personRows[+tr.dataset.pIdx];
-        M2.table.setFilters({salesHead: row.salesHead, costCentre: row.member});
+  if(salesHeadGroups.length){
+    let html = '<table class="attach-table"><tr><th>Sales Head / Team Member</th><th>New</th><th>Not Connected</th><th>Total</th><th>Download</th></tr>';
+    salesHeadGroups.forEach((g,gi)=>{
+      html += `<tr class="clickable-row" data-shg-idx="${gi}" style="background:var(--paper);">
+        <td><strong>${Utils.escapeHtml(g.salesHead)}</strong>${g.isAssumed?' <span class="mini-note" style="display:inline;">(assumed = Cost Centre, no separate Sales Head field)</span>':''}</td>
+        <td><strong>${g.newCount}</strong></td>
+        <td><strong>${g.ncCount}</strong></td>
+        <td><strong>${g.newCount+g.ncCount}</strong></td>
+        <td>
+          <button class="btn btn-sm" data-shg-download-new="${gi}" type="button">⬇ New</button>
+          <button class="btn btn-sm" data-shg-download-nc="${gi}" type="button">⬇ Not Connected</button>
+        </td>
+      </tr>`;
+      Object.values(g.members).sort((a,b)=>(b.newCount+b.ncCount)-(a.newCount+a.ncCount)).forEach((m,mi)=>{
+        html += `<tr class="clickable-row" data-shg-idx="${gi}" data-mem-idx="${mi}">
+          <td style="padding-left:26px;">${Utils.escapeHtml(m.member)}</td>
+          <td>${m.newCount}</td><td>${m.ncCount}</td><td>${m.newCount+m.ncCount}</td><td></td>
+        </tr>`;
+      });
+    });
+    html += '</table>';
+    personEl.innerHTML = html;
+    personEl.querySelectorAll('tr[data-shg-idx]').forEach(tr=>{
+      tr.addEventListener('click', function(e){
+        if(e.target.closest('[data-shg-download-new],[data-shg-download-nc]')) return;
+        const g = salesHeadGroups[+tr.dataset.shgIdx];
+        if(tr.dataset.memIdx !== undefined && tr.hasAttribute('data-mem-idx')){
+          const m = Object.values(g.members).sort((a,b)=>(b.newCount+b.ncCount)-(a.newCount+a.ncCount))[+tr.dataset.memIdx];
+          M2.table.setFilters({salesHead: g.salesHead, costCentre: m.member});
+        } else {
+          M2.table.setFilters({salesHead: g.salesHead});
+        }
+      });
+    });
+    personEl.querySelectorAll('[data-shg-download-new]').forEach(btn=>{
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        const g = salesHeadGroups[+this.dataset.shgDownloadNew];
+        M2.downloadSalesHead(g.salesHead, leads, 'new');
+      });
+    });
+    personEl.querySelectorAll('[data-shg-download-nc]').forEach(btn=>{
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        const g = salesHeadGroups[+this.dataset.shgDownloadNc];
+        M2.downloadSalesHead(g.salesHead, leads, 'not_connected');
       });
     });
   } else {
@@ -2038,50 +2436,49 @@ M2.buildReport = function(leads){
   } else {
     ageEl.innerHTML = `<div class="empty-state">No Not Connected leads found in the uploaded file(s).</div>`;
   }
+};
 
-  const columns = [
-    {key:'crm', label:'CRM'},
-    {key:'date', label:'Assigned / Created Date'},
-    {key:'daysInStatus', label:'Days Since Assigned'},
-    {key:'followUpCount', label:'Follow-up Count'},
-    {key:'leadName', label:'Lead Name'},
-    {key:'project', label:'Project', wrap:true},
-    {key:'source', label:'Source/Sub-source'},
-    {key:'channel', label:'Channel'},
-    {key:'salesHead', label:'Sales Head'},
-    {key:'costCentre', label:'Member (Owner)'},
-    {key:'statusLabel', label:'Status'},
-    {key:'originalStatus', label:'Original CRM Status'},
-    {key:'remarks', label:'Reason', wrap:true},
-    {key:'salesRemark', label:'Last Remark (Sales)', wrap:true},
-    {key:'flag', label:'Sales Follow-up Flag', pill:true},
-  ];
-  const filterDefs = [
-    {key:'date', label:'Date', type:'daterange'},
-    {key:'crm', label:'CRM'},
-    {key:'project', label:'Project'},
-    {key:'channel', label:'Channel'},
-    {key:'source', label:'Source/Sub-source'},
-    {key:'salesHead', label:'Sales Head'},
-    {key:'costCentre', label:'Member (Owner)'},
-    {key:'statusLabel', label:'New / Not Connected'},
-    {key:'agingBucket', label:'Lead Age'},
-    {key:'originalStatus', label:'Original Status'},
-    {key:'flag', label:'Sales Follow-up Flag'},
-  ];
+/* Downloads a standalone workbook scoped to one Sales Head AND one status
+   (New or Not Connected — kept as two separate downloads per the person's
+   request, not combined). Team Summary sheet (count per team member) plus
+   the full Lead Detail for just that Sales Head's team and that status.
+   Sales Head appears once as a title above the table, not repeated per row. */
+M2.downloadSalesHead = function(salesHeadName, allLeads, statusClass){
+  const statusLabel = statusClass==='new' ? 'New' : 'Not Connected';
+  const scoped = allLeads.filter(l => l.salesHead === salesHeadName && l.statusClass === statusClass);
+  if(!scoped.length){ Utils.toast(`No ${statusLabel} leads found for ${salesHeadName}`); return; }
 
-  M2.table = new DataTable({
-    prefix:'m2', columns:columns, rows:leads, filterDefs:filterDefs,
-    filename:'new_not_connected_followup.xlsx'
+  const byMember = {};
+  scoped.forEach(l=>{
+    const k = l.costCentre;
+    if(!byMember[k]) byMember[k] = {member:k, count:0};
+    byMember[k].count++;
   });
+  const summaryRows = Object.values(byMember).sort((a,b)=>b.count-a.count);
 
-  document.getElementById('m2-kpi-newperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'New'}));
-  document.getElementById('m2-kpi-ncperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'Not Connected'}));
-  document.getElementById('m2-kpi-noreason').addEventListener('click', ()=> M2.table.setFilters({remarks:NO_REASON_TEXT, statusLabel:'Not Connected'}));
-  document.getElementById('m2-kpi-stale').addEventListener('click', ()=>{
-    M2.table.setFilters({statusLabel:'Not Connected'});
-    Utils.toast('Filtered to Not Connected — sort/scan the Days Since Assigned column, or click an Aging row above for a specific range');
+  const summaryAOA = [
+    ['Sales Head:', salesHeadName],
+    [],
+    ['Team Member', statusLabel+' Count'],
+    ...summaryRows.map(r=>[r.member, r.count]),
+    [],
+    ['Total', summaryRows.reduce((s,r)=>s+r.count,0)]
+  ];
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryAOA);
+
+  const cols = M2._columns;
+  const detailData = scoped.map(row=>{
+    const o = {};
+    cols.forEach(c=>{ const v = row[c.key]; o[c.label] = (v===undefined||v===null) ? '' : v; });
+    return o;
   });
+  const wsDetail = XLSX.utils.json_to_sheet(detailData, {header: cols.map(c=>c.label)});
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsSummary, statusLabel+' Summary');
+  XLSX.utils.book_append_sheet(wb, wsDetail, 'Lead Detail');
+  const safeName = salesHeadName.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g,'') || 'sales_head';
+  XLSX.writeFile(wb, safeName + '_' + statusClass + '.xlsx');
 };
 
 </script>
@@ -2092,10 +2489,10 @@ M2.buildReport = function(leads){
 const M3 = { agency:null, crm:null };
 
 document.addEventListener('DOMContentLoaded', function(){
-  new FileBox({inputId:'m3-file-agency', boxId:'m3-box-agency', statusId:'m3-status-agency', onChange:function(data){
+  new MultiFileBox({inputId:'m3-file-agency', boxId:'m3-box-agency', statusId:'m3-status-agency', onChange:function(data){
     M3.agency = data; M3._checkReady();
   }});
-  new FileBox({inputId:'m3-file-crm', boxId:'m3-box-crm', statusId:'m3-status-crm', onChange:function(data){
+  new MultiFileBox({inputId:'m3-file-crm', boxId:'m3-box-crm', statusId:'m3-status-crm', onChange:function(data){
     M3.crm = data; M3._checkReady();
   }});
   document.getElementById('m3-generate').addEventListener('click', function(){
@@ -2128,13 +2525,201 @@ const M3_CRM_FIELDS = [
   {key:'status', label:'Status / Disposition (used to detect Duplicate / Test Lead / Rejection)', required:false},
 ];
 
+/* Fields for the "agency sends a per-project summary" mode (e.g. a City-wise
+   Projects sheet with a pre-computed Total Leads column, like a screenshot of
+   an agency's own tracker) — no date/source granularity, project-only. */
+const M3_AGENCY_SUMMARY_FIELDS = [
+  {key:'project', label:'Project', required:true},
+  {key:'generatedCount', label:'Total Leads (the count the agency claims to have generated)', required:true},
+  {key:'status', label:'Status (e.g. Live / Pause — optional)', required:false},
+  {key:'assignedTarget', label:'Assigned Lead Target (optional)', required:false},
+  {key:'shortfall', label:'Shortfall as reported by the agency (optional)', required:false},
+  {key:'cpl', label:'CPL (optional)', required:false},
+  {key:'totalSpent', label:'Total Spent (optional)', required:false},
+];
+const M3_CRM_SUMMARY_FIELDS = [
+  {key:'project', label:'Project', required:true},
+];
+
 M3.STATUS_PATTERNS = {
   duplicate: /duplicate/i,
   testLead: /test\s*lead/i,
   otherRejection: /invalid|rejected|junk|spam|wrong\s*(number|no\b)|not interested area|fake/i,
 };
 
+/* Groups by day, not by exact string — a CRM export's "30 Aug 2026 11:33 PM"
+   and an agency's "30-08-2026" must match on the date alone, since agencies
+   virtually never report lead time-of-day. Falls back to the raw normalized
+   string only if the value can't be parsed as a date at all. */
+M3.groupDateKey = function(dateStr){
+  const d = Utils.toDateSafe(dateStr);
+  if(d) return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return Utils.normLoose(dateStr);
+};
+
+/* Matches one agency-reported project name against the CRM's actual project
+   names — agency sheets almost never spell a project exactly the way CRM
+   does ("Birla Punya" vs "Birla Punya Pune"). Tries exact, then substring
+   (either direction — catches "Mahindra" matching several Mahindra-branded
+   CRM projects, which are then summed together), then fuzzy similarity as a
+   last resort. Never silently guesses beyond this — unmatched stays unmatched. */
+M3.matchProject = function(agencyProjectName, crmProjectTotals){
+  const aNorm = Utils.normLoose(agencyProjectName);
+  const exact = crmProjectTotals.filter(c => Utils.normLoose(c.project) === aNorm);
+  if(exact.length) return {matches: exact, type: 'Exact'};
+
+  const substring = crmProjectTotals.filter(c=>{
+    const cNorm = Utils.normLoose(c.project);
+    return cNorm.includes(aNorm) || aNorm.includes(cNorm);
+  });
+  if(substring.length > 1){
+    // Guard against a short agency name (e.g. "Mahindra") pulling in a same-brand project
+    // from a totally different city. If most matches share a common last word (a rough
+    // proxy for city, since BPL puts location last), drop the outlier(s) that don't.
+    const lastWord = p => Utils.normLoose(p).trim().split(' ').pop();
+    const counts = {};
+    substring.forEach(c=>{ const w = lastWord(c.project); counts[w] = (counts[w]||0)+1; });
+    const ranked = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    const dominant = ranked[0];
+    if(dominant && dominant[1] > 1 && dominant[1] < substring.length){
+      const filtered = substring.filter(c => lastWord(c.project) === dominant[0]);
+      const excludedCount = substring.length - filtered.length;
+      return {matches: filtered, type: `Substring (${filtered.length} CRM projects combined, ${excludedCount} outlier${excludedCount>1?'s':''} excluded by city)`};
+    }
+  }
+  if(substring.length) return {matches: substring, type: substring.length>1 ? `Substring (${substring.length} CRM projects combined)` : 'Substring'};
+
+  const scored = crmProjectTotals
+    .map(c=>({c, score: Utils.similarity(agencyProjectName, c.project)}))
+    .sort((a,b)=>b.score-a.score);
+  if(scored.length && scored[0].score >= 0.45){
+    return {matches: [scored[0].c], type: `Fuzzy (${Math.round(scored[0].score*100)}% match)`};
+  }
+  return {matches: [], type: 'No match'};
+};
+
 M3.generate = async function(){
+  const summaryMode = !!(document.getElementById('m3-agency-summary-toggle') && document.getElementById('m3-agency-summary-toggle').checked);
+  if(summaryMode) return M3.generateSummaryMode();
+  return M3.generateLeadLevel();
+};
+
+/* ---- Mode A: agency sends a per-project summary sheet with a pre-computed count ---- */
+M3.generateSummaryMode = async function(){
+  const aDetected = Utils.detectColumns(M3.agency.headers, M3_AGENCY_SUMMARY_FIELDS.map(f=>f.key), M3.agency.rows);
+  const aMap = await Utils.resolveMapping('Map columns — Agency Summary File','Confirm which column holds each field.', M3_AGENCY_SUMMARY_FIELDS, M3.agency.headers, aDetected);
+  if(!aMap) return;
+  const cDetected = Utils.detectColumns(M3.crm.headers, M3_CRM_SUMMARY_FIELDS.map(f=>f.key), M3.crm.rows);
+  const cMap = await Utils.resolveMapping('Map columns — CRM Lead Master File','Confirm which column holds the project name.', M3_CRM_SUMMARY_FIELDS, M3.crm.headers, cDetected);
+  if(!cMap) return;
+
+  const crmByProject = {};
+  M3.crm.rows.forEach(row=>{
+    const project = Utils.val(row, cMap.project);
+    if(Utils.isBlank(project)) return;
+    if(!crmByProject[project]) crmByProject[project] = {project, received:0};
+    crmByProject[project].received++;
+  });
+  const crmProjectTotals = Object.values(crmByProject);
+
+  const out = [];
+  M3.agency.rows.forEach(row=>{
+    const project = Utils.val(row, aMap.project);
+    if(Utils.isBlank(project)) return;
+    const generated = parseFloat(Utils.val(row, aMap.generatedCount)) || 0;
+    const assignedTarget = aMap.assignedTarget ? Utils.val(row, aMap.assignedTarget) : '';
+    const shortfallVal = aMap.shortfall ? Utils.val(row, aMap.shortfall) : '';
+    const cpl = aMap.cpl ? Utils.val(row, aMap.cpl) : '';
+    const totalSpent = aMap.totalSpent ? Utils.val(row, aMap.totalSpent) : '';
+    const agencyStatus = aMap.status ? Utils.val(row, aMap.status) : '';
+
+    const match = M3.matchProject(project, crmProjectTotals);
+    const received = match.matches.reduce((s,m)=>s+m.received, 0);
+    const matchedNames = match.matches.map(m=>m.project).join(', ');
+    const gap = generated - received;
+    const gapPct = generated > 0 ? Math.round((gap/generated)*1000)/10 : null;
+    const tolerance = Math.max(1, Math.round(generated*0.05));
+
+    let status, action;
+    if(!match.matches.length){
+      status = 'REVIEW REQUIRED';
+      action = `No CRM project found matching "${project}" — check spelling, or confirm this project exists in the uploaded CRM file(s).`;
+    } else if(Math.abs(gap) <= tolerance){
+      status = 'MATCHED';
+      action = 'No action needed — agency count reconciles with CRM within a small tolerance.';
+    } else if(gap > 0){
+      status = 'UNEXPLAINED GAP';
+      action = `Agency claims ${generated} but CRM shows only ${received} — agency is over-claiming by ${gap}. Escalate.`;
+    } else {
+      status = 'REVIEW REQUIRED';
+      action = `CRM shows more leads (${received}) than the agency claims (${generated}) for this project — confirm the agency's number is scoped the same way (e.g. same source/campaign) before treating this as fine.`;
+    }
+
+    out.push({
+      agencyProject: project, matchedCrmProject: matchedNames || '(none found)', matchType: match.type,
+      generated, received, gap, gapPct: gapPct===null?'N/A':gapPct+'%',
+      assignedTarget, shortfall: shortfallVal, cpl, totalSpent, agencyStatus,
+      status, action
+    });
+  });
+
+  out.sort((x,y)=> Math.abs(y.gap) - Math.abs(x.gap));
+  M3.buildSummaryReport(out);
+};
+
+M3.buildSummaryReport = function(rows){
+  document.getElementById('m3-report').style.display = 'block';
+  document.getElementById('m3-match-summary-card').style.display = 'block';
+
+  const totalGenerated = rows.reduce((s,r)=>s+r.generated,0);
+  const totalReceived = rows.reduce((s,r)=>s+r.received,0);
+  const totalGap = rows.reduce((s,r)=>s+r.gap,0);
+  const unmatchedCount = rows.filter(r=>r.matchType==='No match').length;
+
+  document.getElementById('m3-kpis').innerHTML = `
+    <div class="kpi tone-accent"><div class="k-label">Agency claimed (Total Leads)</div><div class="k-value">${totalGenerated}</div></div>
+    <div class="kpi tone-accent"><div class="k-label">CRM actual (matched projects)</div><div class="k-value">${totalReceived}</div></div>
+    <div class="kpi tone-red"><div class="k-label">Total gap (claimed − actual)</div><div class="k-value">${totalGap}</div></div>
+    <div class="kpi tone-amber"><div class="k-label">Projects with no CRM match</div><div class="k-value">${unmatchedCount}</div></div>
+  `;
+
+  const byType = {};
+  rows.forEach(r=>{ byType[r.matchType] = (byType[r.matchType]||0)+1; });
+  const matchEl = document.getElementById('m3-match-summary');
+  matchEl.innerHTML = `<table class="attach-table"><tr><th>Match Type</th><th>Count</th></tr>` +
+    Object.entries(byType).map(([t,c])=>`<tr><td>${Utils.escapeHtml(t)}</td><td>${c}</td></tr>`).join('') +
+    `</table><div class="mini-note">"Substring" or "Fuzzy" matches mean the agency's project name didn't exactly match CRM's spelling — double-check these in the table below before trusting the numbers. "No match" rows need a manual look.</div>`;
+
+  const columns = [
+    {key:'agencyProject', label:'Agency Project', wrap:true},
+    {key:'matchedCrmProject', label:'Matched CRM Project(s)', wrap:true},
+    {key:'matchType', label:'Match Type'},
+    {key:'generated', label:'Agency Claimed (Total Leads)'},
+    {key:'received', label:'CRM Actual'},
+    {key:'gap', label:'Gap'},
+    {key:'gapPct', label:'Gap %'},
+    {key:'assignedTarget', label:'Assigned Lead Target'},
+    {key:'shortfall', label:'Shortfall (Agency-reported)'},
+    {key:'cpl', label:'CPL'},
+    {key:'totalSpent', label:'Total Spent'},
+    {key:'agencyStatus', label:'Agency Status'},
+    {key:'status', label:'Verdict', pill:true},
+    {key:'action', label:'Recommended Action', wrap:true},
+  ];
+  const filterDefs = [
+    {key:'matchType', label:'Match Type'},
+    {key:'status', label:'Verdict'},
+    {key:'agencyStatus', label:'Agency Status'},
+  ];
+
+  new DataTable({
+    prefix:'m3', columns:columns, rows:rows, filterDefs:filterDefs,
+    filename:'agency_crm_lead_gap_summary.xlsx'
+  });
+};
+
+/* ---- Mode B (default): agency sends lead-level rows, one per lead ---- */
+M3.generateLeadLevel = async function(){
   const aDetected = Utils.detectColumns(M3.agency.headers, M3_AGENCY_FIELDS.map(f=>f.key), M3.agency.rows);
   const aMap = await Utils.resolveMapping('Map columns — Agency Lead Generation File','Confirm which column holds each field.', M3_AGENCY_FIELDS, M3.agency.headers, aDetected);
   if(!aMap) return;
@@ -2153,7 +2738,7 @@ M3.generate = async function(){
     const sourceRaw = Utils.val(row, aMap.source);
     const source = Utils.resolveSource(sourceRaw).canonical || sourceRaw;
     const campaign = Utils.val(row, aMap.campaign);
-    const key = [date, agency, project, source, campaign].map(Utils.normLoose).join('|');
+    const key = [M3.groupDateKey(date), Utils.normLoose(agency), Utils.normLoose(project), Utils.normLoose(source), Utils.normLoose(campaign)].join('|');
     if(!agencyGroups[key]) agencyGroups[key] = {date, agency, project, source, campaign, generated:0};
     agencyGroups[key].generated += 1;
   });
@@ -2168,7 +2753,7 @@ M3.generate = async function(){
     const source = Utils.resolveSource(sourceRaw).canonical || sourceRaw;
     const campaign = Utils.val(row, cMap.campaign);
     const status = Utils.val(row, cMap.status);
-    const key = [date, agency, project, source, campaign].map(Utils.normLoose).join('|');
+    const key = [M3.groupDateKey(date), Utils.normLoose(agency), Utils.normLoose(project), Utils.normLoose(source), Utils.normLoose(campaign)].join('|');
     if(!crmGroups[key]) crmGroups[key] = {date, agency, project, source, campaign, received:0, duplicate:0, testLead:0, otherRejection:0};
     crmGroups[key].received += 1;
     if(M3.STATUS_PATTERNS.duplicate.test(status)) crmGroups[key].duplicate += 1;
@@ -2226,6 +2811,7 @@ M3.generate = async function(){
 
 M3.buildReport = function(rows){
   document.getElementById('m3-report').style.display = 'block';
+  document.getElementById('m3-match-summary-card').style.display = 'none';
 
   const totalGenerated = rows.reduce((s,r)=>s+r.generated,0);
   const totalReceived = rows.reduce((s,r)=>s+r.received,0);
