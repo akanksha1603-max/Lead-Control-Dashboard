@@ -445,14 +445,12 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
             <div class="u-hint">Leads the agency reports as generated — one file or several (e.g. per source)</div>
             <input type="file" id="m3-file-agency" accept=".xlsx,.xls,.csv" multiple>
             <div class="u-status empty" id="m3-status-agency">No file uploaded</div>
-            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-strong);" id="m3-gsheet-agency"></div>
           </div>
           <div class="upload-box" id="m3-box-crm">
             <div class="u-title">CRM Lead Master File(s)</div>
             <div class="u-hint">Leads actually received in 4QT / LeadSquared — one file or several (e.g. per source)</div>
             <input type="file" id="m3-file-crm" accept=".xlsx,.xls,.csv" multiple>
             <div class="u-status empty" id="m3-status-crm">No file uploaded</div>
-            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-strong);" id="m3-gsheet-crm"></div>
           </div>
         </div>
         <div class="btn-row" style="margin-top:14px;">
@@ -542,6 +540,10 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         </div>
 
         <div id="m4-tab-4qt">
+          <div class="field" style="max-width:320px;">
+            <label>Mail Template</label>
+            <select id="m4-4qt-template-select"></select>
+          </div>
           <div class="mail-preview" id="m4-4qt-preview"></div>
           <div class="btn-row" style="margin-top:12px;">
             <button class="btn" id="m4-4qt-copy-subject">Copy subject</button>
@@ -550,6 +552,10 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         </div>
 
         <div id="m4-tab-lsq" style="display:none;">
+          <div class="field" style="max-width:320px;">
+            <label>Mail Template</label>
+            <select id="m4-lsq-template-select"></select>
+          </div>
           <div class="mail-preview" id="m4-lsq-preview"></div>
           <h2 style="margin-top:16px;">Attachment preview</h2>
           <table class="attach-table" id="m4-attach-table"></table>
@@ -644,17 +650,13 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       </div>
 
       <div class="card">
-        <h2>Live Google Sheets Connections <small>Read data straight from a vendor's live sheet instead of uploading a file each time</small></h2>
-        <div class="help-note">Uses the Google Sheets API with a key you control — no server of ours is involved, your browser talks to Google directly. The sheet must be shared as <strong>"Anyone with the link: Viewer"</strong> (an API key alone can't unlock a fully private sheet — that would need full Google sign-in instead, which this dashboard doesn't do). Your API key should be <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">restricted</a> to the Google Sheets API only.</div>
-        <div class="field">
-          <label>Google Sheets API key</label>
-          <input type="text" id="set-google-api-key" placeholder="Paste your API key here">
-        </div>
-        <h2 style="margin-top:18px;">Saved connections</h2>
-        <div id="set-connections-table"></div>
+        <h2>Mail Templates <small>Multiple named templates per CRM — pick whichever one fits in Module 4</small></h2>
+        <div class="help-note">Placeholders you can use in Subject/Body: <code>{{project}}</code>, <code>{{source}}</code>, <code>{{salesHead}}</code>, <code>{{teamMembersList}}</code> (a pre-formatted numbered list of team members).</div>
+        <div id="set-mail-template-table"></div>
         <div class="btn-row" style="margin-top:12px;">
-          <button class="btn" id="set-add-connection">+ Add connection</button>
-          <button class="btn btn-primary" id="set-save-connections">Save connections &amp; API key</button>
+          <button class="btn" id="set-add-mail-template">+ Add template</button>
+          <button class="btn" id="set-reset-mail-templates">Reset to defaults</button>
+          <button class="btn btn-primary" id="set-save-mail-templates">Save Mail Templates</button>
         </div>
       </div>
 
@@ -897,6 +899,45 @@ Utils.DEFAULT_LSQ_REGION_COST_CENTRE = {
   'nri': ['Sanjiv Tiwari - NRI'],
   'dubai': ['Sanjiv Tiwari - NRI'], // NRI and Dubai are the same desk/location
 };
+/* ---------- Mapping mail templates (editable, multiple per CRM) ----------
+   Placeholders: {{project}}, {{source}}, {{salesHead}}, {{teamMembersList}}
+   (a pre-formatted numbered list). Seeded with the original two hardcoded
+   templates so nothing changes for anyone until they add more. */
+Utils.DEFAULT_MAIL_TEMPLATES = [
+  {
+    id:'4qt-standard', name:'4QT Standard', kind:'4qt',
+    subject:'Project Mapping Update - {{project}} - Source:{{source}}',
+    body:`Hi Ram Sir,
+
+Please do the project Mapping as per the below details.
+
+Project Name : {{project}}
+Source : {{source}}
+Map To : Mr. {{salesHead}}
+
+Team Members
+{{teamMembersList}}
+
+@{{salesHead}} Sir, Going Forward, if you need any changes in the project mapping, you can simply reply to this email trail. The CRM team is already included in this email loop.
+
+They will directly pick up your request and update the mapping accordingly.
+
+Thank you`
+  },
+  {
+    id:'lsq-standard', name:'LeadSquared Standard', kind:'lsq',
+    subject:'Project Mapping Update - {{project}} - Source:{{source}}',
+    body:`Hi Team,
+
+Please update the LeadSquared mapping as per the details below. The attachment lists each mapping person with their Source and Project.
+
+Project Name : {{project}}
+Source : {{source}}
+Map To : Mr. {{salesHead}}
+
+Thank you`
+  }
+];
 Utils.DEFAULT_SETTINGS = function(){
   return {
     sourceMaster: JSON.parse(JSON.stringify(Utils.DEFAULT_SOURCE_MASTER)),
@@ -907,7 +948,8 @@ Utils.DEFAULT_SETTINGS = function(){
     performancePattern: 'meta|search ads|demand gen|video ads|ppc|platter|property portal|ivr|whatsapp',
     excludedCostCentreNames: ['Vishal'],
     googleApiKey: '',
-    liveConnections: []
+    liveConnections: [],
+    mailTemplates: JSON.parse(JSON.stringify(Utils.DEFAULT_MAIL_TEMPLATES))
   };
 };
 Utils._storageAvailable = (function(){
@@ -1467,36 +1509,60 @@ MultiFileBox.prototype.clear = function(){
 };
 
 /* ---------- Live Google Sheets connection ----------
-   Reads a sheet using the Google Sheets API v4 with a restricted API key —
-   works from a plain fetch() in the browser, no backend needed, since Google's
-   API allows CORS for key-authenticated GET requests. The key only grants
-   read access to sheets already shared as "Anyone with the link: Viewer" (or
-   public) — an API key alone can't unlock a genuinely private sheet, that
-   would need full OAuth sign-in instead. */
+   Two ways in, both ending up in the browser calling fetch() directly:
+   1. Google Sheets API v4 + a restricted API key — needs the sheet shared as
+      "Anyone with the link: Viewer" (or public). Simplest when link-sharing
+      isn't blocked by an org policy.
+   2. A Google Apps Script "Web App" deployed from inside the sheet, set to
+      "Execute as: Me" / "Who has access: Anyone" — this works even when a
+      Workspace admin has disabled Drive link-sharing entirely, since Apps
+      Script deployments are a separate permission surface: the script runs
+      under the deploying editor's own access to the sheet, and only the
+      deployment URL itself needs to be callable by anyone.
+   Detected automatically from the URL the person pastes in — no extra UI. */
 Utils.parseSheetIdFromUrl = function(input){
   const s = Utils.norm(input);
   const m = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m ? m[1] : s; // if it's not a URL, assume they pasted the raw ID directly
 };
+Utils.isAppsScriptUrl = function(input){
+  return /script\.google\.com\/macros\//i.test(Utils.norm(input));
+};
 Utils.fetchGoogleSheet = async function(spreadsheetIdOrUrl, range, apiKey){
-  const id = Utils.parseSheetIdFromUrl(spreadsheetIdOrUrl);
-  const key = apiKey || Utils.Settings.googleApiKey;
-  if(!key) throw new Error('No Google API key set — add one in Settings → Live Google Sheets Connections.');
-  if(!id) throw new Error('No spreadsheet ID or URL given.');
-  const encodedRange = encodeURIComponent(range || 'A1:ZZ10000');
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodedRange}?key=${encodeURIComponent(key)}`;
-  let resp;
-  try{ resp = await fetch(url); }
-  catch(e){ throw new Error('Network error reaching Google Sheets — check your internet connection.'); }
-  if(!resp.ok){
-    let detail = '';
-    try{ const j = await resp.json(); detail = j.error && j.error.message ? j.error.message : ''; }catch(e){}
-    if(resp.status === 403) throw new Error('Access denied (403). Check the sheet is shared as "Anyone with the link: Viewer", and that your API key is enabled for the Google Sheets API. ' + detail);
-    if(resp.status === 404) throw new Error('Sheet or range not found (404). Double-check the spreadsheet ID/URL and range. ' + detail);
-    throw new Error('Google Sheets API error ' + resp.status + '. ' + detail);
+  const input = Utils.norm(spreadsheetIdOrUrl);
+  let aoa;
+
+  if(Utils.isAppsScriptUrl(input)){
+    const sep = input.includes('?') ? '&' : '?';
+    const fetchUrl = range ? (input + sep + 'range=' + encodeURIComponent(range)) : input;
+    let resp;
+    try{ resp = await fetch(fetchUrl); }
+    catch(e){ throw new Error('Network error reaching your Apps Script Web App URL — check your internet connection.'); }
+    if(!resp.ok) throw new Error('Apps Script Web App returned an error (status '+resp.status+'). Make sure it is deployed with access set to "Anyone".');
+    const json = await resp.json();
+    if(json.error) throw new Error('Apps Script error: ' + json.error);
+    aoa = json.values || [];
+  } else {
+    const id = Utils.parseSheetIdFromUrl(input);
+    const key = apiKey || Utils.Settings.googleApiKey;
+    if(!key) throw new Error('No Google API key set — add one in Settings → Live Google Sheets Connections.');
+    if(!id) throw new Error('No spreadsheet ID or URL given.');
+    const encodedRange = encodeURIComponent(range || 'A1:ZZ10000');
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodedRange}?key=${encodeURIComponent(key)}`;
+    let resp;
+    try{ resp = await fetch(url); }
+    catch(e){ throw new Error('Network error reaching Google Sheets — check your internet connection.'); }
+    if(!resp.ok){
+      let detail = '';
+      try{ const j = await resp.json(); detail = j.error && j.error.message ? j.error.message : ''; }catch(e){}
+      if(resp.status === 403) throw new Error('Access denied (403). Check the sheet is shared as "Anyone with the link: Viewer", and that your API key is enabled for the Google Sheets API. If your organization blocks link-sharing, use an Apps Script Web App URL instead — ask me for the script. ' + detail);
+      if(resp.status === 404) throw new Error('Sheet or range not found (404). Double-check the spreadsheet ID/URL and range. ' + detail);
+      throw new Error('Google Sheets API error ' + resp.status + '. ' + detail);
+    }
+    const json = await resp.json();
+    aoa = json.values || [];
   }
-  const json = await resp.json();
-  const aoa = json.values || [];
+
   if(!aoa.length) throw new Error('That range came back empty — check the sheet/range name.');
   const hdrIdx = Utils.detectHeaderRow(aoa);
   const rawHeaders = aoa[hdrIdx] || [];
@@ -1511,7 +1577,7 @@ Utils.fetchGoogleSheet = async function(spreadsheetIdOrUrl, range, apiKey){
     headers.forEach((h,i)=>{ obj[h] = arr[i]!==undefined ? arr[i] : ''; });
     rows.push(obj);
   }
-  return {fileName: 'Google Sheet ('+id.slice(0,8)+'…)', headers, rows, sheetId:id, range: range||'A1:ZZ10000'};
+  return {fileName: (Utils.isAppsScriptUrl(input) ? 'Apps Script feed' : 'Google Sheet') + ' (' + input.slice(0,24) + '…)', headers, rows, sheetId: input, range: range||'A1:ZZ10000'};
 };
 
 /* UI widget: pick a saved connection (or type one in ad hoc), fetch on demand,
@@ -2628,12 +2694,6 @@ document.addEventListener('DOMContentLoaded', function(){
   new MultiFileBox({inputId:'m3-file-crm', boxId:'m3-box-crm', statusId:'m3-status-crm', onChange:function(data){
     M3.crm = data; M3._checkReady();
   }});
-  new GoogleSheetBox({containerId:'m3-gsheet-agency', onChange:function(data){
-    M3.agency = data; M3._checkReady();
-  }});
-  new GoogleSheetBox({containerId:'m3-gsheet-crm', onChange:function(data){
-    M3.crm = data; M3._checkReady();
-  }});
   document.getElementById('m3-generate').addEventListener('click', function(){
     const btn = this;
     const original = btn.textContent;
@@ -3120,7 +3180,7 @@ M3.buildReport = function(rows){
 /* ============================================================
    MODULE 4 — MAPPING MAIL GENERATOR
    ============================================================ */
-const M4 = { project:'', source:'', sourceKnown:false, salesHead:'', team:[], activeTab:'4qt', locationSuggestion:null };
+const M4 = { project:'', source:'', sourceKnown:false, salesHead:'', team:[], activeTab:'4qt', locationSuggestion:null, selectedTemplateId4qt:null, selectedTemplateIdLsq:null };
 
 /* Build a source keyword list sorted by word-count descending, for greedy contiguous matching.
    Recomputed on each call so edits made in Settings take effect immediately. */
@@ -3237,6 +3297,11 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   });
 
+  const sel4qt = document.getElementById('m4-4qt-template-select');
+  if(sel4qt) sel4qt.addEventListener('change', function(){ M4.selectedTemplateId4qt = this.value; M4.renderMail(); });
+  const selLsq = document.getElementById('m4-lsq-template-select');
+  if(selLsq) selLsq.addEventListener('change', function(){ M4.selectedTemplateIdLsq = this.value; M4.renderMail(); });
+
   document.getElementById('m4-4qt-copy-subject').addEventListener('click', ()=> Utils.copyToClipboard(M4.subject4qt(), 'Subject copied'));
   document.getElementById('m4-4qt-copy-mail').addEventListener('click', ()=> Utils.copyToClipboard(M4.subject4qt()+'\n\n'+M4.body4qt(), 'Mail copied'));
   document.getElementById('m4-lsq-copy-subject').addEventListener('click', ()=> Utils.copyToClipboard(M4.subjectLsq(), 'Subject copied'));
@@ -3303,49 +3368,60 @@ M4._setFlag = function(fieldId, show, text){
 
 M4.cleanTeam = function(){ return M4.team.map(t=>t.trim()).filter(Boolean); };
 
-M4.subject4qt = function(){
-  return `Project Mapping Update - ${M4.project || '[Project BPL]'} - Source:${M4.source || '[Source]'}`;
+/* Templates for a given CRM ("4qt" or "lsq"), always at least the built-in
+   defaults even if Settings somehow has none of that kind. */
+M4.templatesFor = function(kind){
+  const all = (Utils.Settings.mailTemplates || []).filter(t=>t.kind===kind);
+  if(all.length) return all;
+  return Utils.DEFAULT_MAIL_TEMPLATES.filter(t=>t.kind===kind);
 };
-M4.body4qt = function(){
+M4.currentTemplate = function(kind){
+  const list = M4.templatesFor(kind);
+  const selectedId = kind==='4qt' ? M4.selectedTemplateId4qt : M4.selectedTemplateIdLsq;
+  return list.find(t=>t.id===selectedId) || list[0];
+};
+M4.applyTemplate = function(str){
   const team = M4.cleanTeam();
-  const teamLines = team.length ? team.map((m,i)=>`${i+1}. ${m}`).join('\n') : '1. [Add team member]';
-  return `Hi Ram Sir,
-
-Please do the project Mapping as per the below details.
-
-Project Name : ${M4.project || '[Project BPL]'}
-Source : ${M4.source || '[Source]'}
-Map To : Mr. ${M4.salesHead || '[Sales Head]'}
-
-Team Members
-${teamLines}
-
-@${M4.salesHead || '[Sales Head]'} Sir, Going Forward, if you need any changes in the project mapping, you can simply reply to this email trail. The CRM team is already included in this email loop.
-
-They will directly pick up your request and update the mapping accordingly.
-
-Thank you`;
+  const teamMembersList = team.length ? team.map((m,i)=>`${i+1}. ${m}`).join('\n') : '1. [Add team member]';
+  const vars = {
+    project: M4.project || '[Project BPL]',
+    source: M4.source || '[Source]',
+    salesHead: M4.salesHead || '[Sales Head]',
+    teamMembersList
+  };
+  let out = str;
+  Object.keys(vars).forEach(k=>{ out = out.split('{{'+k+'}}').join(vars[k]); });
+  return out;
 };
 
-M4.subjectLsq = function(){ return M4.subject4qt(); };
-M4.bodyLsq = function(){
-  return `Hi Team,
+M4.subject4qt = function(){ const t = M4.currentTemplate('4qt'); return M4.applyTemplate(t ? t.subject : ''); };
+M4.body4qt = function(){ const t = M4.currentTemplate('4qt'); return M4.applyTemplate(t ? t.body : ''); };
+M4.subjectLsq = function(){ const t = M4.currentTemplate('lsq'); return M4.applyTemplate(t ? t.subject : ''); };
+M4.bodyLsq = function(){ const t = M4.currentTemplate('lsq'); return M4.applyTemplate(t ? t.body : ''); };
 
-Please update the LeadSquared mapping as per the details below. The attachment lists each mapping person with their Source and Project.
-
-Project Name : ${M4.project || '[Project BPL]'}
-Source : ${M4.source || '[Source]'}
-Map To : Mr. ${M4.salesHead || '[Sales Head]'}
-
-Thank you`;
-};
 M4.attachmentRows = function(){
   const team = M4.cleanTeam();
   const names = team.length ? team : (M4.salesHead ? [M4.salesHead] : []);
   return names.map(n=>({name:n, source:M4.source, project:M4.project}));
 };
 
+M4.renderTemplateSelectors = function(){
+  const sel4qt = document.getElementById('m4-4qt-template-select');
+  const selLsq = document.getElementById('m4-lsq-template-select');
+  if(sel4qt){
+    const list = M4.templatesFor('4qt');
+    if(!M4.selectedTemplateId4qt || !list.find(t=>t.id===M4.selectedTemplateId4qt)) M4.selectedTemplateId4qt = list[0] && list[0].id;
+    sel4qt.innerHTML = list.map(t=>`<option value="${Utils.escapeHtml(t.id)}" ${t.id===M4.selectedTemplateId4qt?'selected':''}>${Utils.escapeHtml(t.name)}</option>`).join('');
+  }
+  if(selLsq){
+    const list = M4.templatesFor('lsq');
+    if(!M4.selectedTemplateIdLsq || !list.find(t=>t.id===M4.selectedTemplateIdLsq)) M4.selectedTemplateIdLsq = list[0] && list[0].id;
+    selLsq.innerHTML = list.map(t=>`<option value="${Utils.escapeHtml(t.id)}" ${t.id===M4.selectedTemplateIdLsq?'selected':''}>${Utils.escapeHtml(t.name)}</option>`).join('');
+  }
+};
+
 M4.renderMail = function(){
+  M4.renderTemplateSelectors();
   document.getElementById('m4-4qt-preview').innerHTML =
     `<div class="mp-subject">Subject: ${Utils.escapeHtml(M4.subject4qt())}</div>${Utils.escapeHtml(M4.body4qt())}`;
   document.getElementById('m4-lsq-preview').innerHTML =
@@ -3366,7 +3442,7 @@ M4.renderMail = function(){
 /* ============================================================
    SETTINGS — customize Source Master, Location Master, and thresholds
    ============================================================ */
-const Settings = { sourceDraft: [], locationDraft: [], connectionsDraft: [] };
+const Settings = { sourceDraft: [], locationDraft: [], mailTemplateDraft: [] };
 
 document.addEventListener('DOMContentLoaded', function(){
   document.querySelectorAll('.rail-item').forEach(function(btn){
@@ -3442,25 +3518,25 @@ document.addEventListener('DOMContentLoaded', function(){
     Utils.toast('Reverted to built-in defaults — click Save to apply');
   });
 
-  document.getElementById('set-add-connection').addEventListener('click', function(){
-    Settings.connectionsDraft.push({label:'', spreadsheetId:'', range:'A1:ZZ10000'});
-    Settings.renderConnectionsTable();
+  document.getElementById('set-add-mail-template').addEventListener('click', function(){
+    Settings.mailTemplateDraft.push({id:'template-'+Date.now(), name:'', kind:'4qt', subject:'', body:''});
+    Settings.renderMailTemplateTable();
   });
-  document.getElementById('set-save-connections').addEventListener('click', function(){
-    const apiKey = document.getElementById('set-google-api-key').value.trim();
-    const rows = Settings.connectionsDraft
-      .map(c=>({
-        label: (c.label||'').trim(),
-        spreadsheetId: Utils.parseSheetIdFromUrl(c.spreadsheetId||''),
-        range: (c.range||'A1:ZZ10000').trim()
-      }))
-      .filter(c=>c.label && c.spreadsheetId);
-    Utils.Settings.googleApiKey = apiKey;
-    Utils.Settings.liveConnections = rows;
+  document.getElementById('set-save-mail-templates').addEventListener('click', function(){
+    const rows = Settings.mailTemplateDraft
+      .map(t=>({id:t.id, name:(t.name||'').trim(), kind:t.kind==='lsq'?'lsq':'4qt', subject:(t.subject||'').trim(), body:t.body||''}))
+      .filter(t=>t.name && t.subject);
+    if(!rows.length){ Utils.toast('Add at least one complete template (Name + Subject)'); return; }
+    Utils.Settings.mailTemplates = rows;
     Utils.saveSettings();
-    Settings.connectionsDraft = JSON.parse(JSON.stringify(rows));
-    Settings.renderConnectionsTable();
-    Utils.toast(Utils._storageAvailable ? 'Connections & API key saved' : 'Saved for this session (browser storage unavailable)');
+    Settings.mailTemplateDraft = JSON.parse(JSON.stringify(rows));
+    Settings.renderMailTemplateTable();
+    Utils.toast(Utils._storageAvailable ? 'Mail Templates saved' : 'Saved for this session (browser storage unavailable)');
+  });
+  document.getElementById('set-reset-mail-templates').addEventListener('click', function(){
+    Settings.mailTemplateDraft = JSON.parse(JSON.stringify(Utils.DEFAULT_MAIL_TEMPLATES));
+    Settings.renderMailTemplateTable();
+    Utils.toast('Reverted to built-in defaults — click Save to apply');
   });
 
   document.getElementById('set-export').addEventListener('click', function(){
@@ -3514,9 +3590,8 @@ Settings.render = function(){
   Settings.renderSourceTable();
   Settings.renderLocationTable();
 
-  document.getElementById('set-google-api-key').value = Utils.Settings.googleApiKey || '';
-  Settings.connectionsDraft = JSON.parse(JSON.stringify(Utils.Settings.liveConnections || []));
-  Settings.renderConnectionsTable();
+  Settings.mailTemplateDraft = JSON.parse(JSON.stringify(Utils.Settings.mailTemplates || Utils.DEFAULT_MAIL_TEMPLATES));
+  Settings.renderMailTemplateTable();
 };
 
 Settings.renderSourceTable = function(){
@@ -3569,30 +3644,36 @@ Settings.renderLocationTable = function(){
   });
 };
 
-Settings.renderConnectionsTable = function(){
-  const el = document.getElementById('set-connections-table');
-  if(!Settings.connectionsDraft.length){
-    el.innerHTML = `<div class="empty-state">No saved connections yet — click "+ Add connection" below.</div>`;
+Settings.renderMailTemplateTable = function(){
+  const el = document.getElementById('set-mail-template-table');
+  if(!Settings.mailTemplateDraft.length){
+    el.innerHTML = `<div class="empty-state">No mail templates yet — click "+ Add template" below.</div>`;
     return;
   }
   el.innerHTML = `<table class="attach-table">
-    <tr><th>Label (e.g. "AJN Tracker")</th><th>Sheet URL or ID</th><th>Range / tab name</th><th></th></tr>
-    ${Settings.connectionsDraft.map((c,i)=>`<tr>
-      <td><input data-conn="${i}" data-f="label" value="${Utils.escapeHtml(c.label||'')}" style="width:150px;"></td>
-      <td><input data-conn="${i}" data-f="spreadsheetId" value="${Utils.escapeHtml(c.spreadsheetId||'')}" style="width:260px;" placeholder="Paste the full sheet URL or just the ID"></td>
-      <td><input data-conn="${i}" data-f="range" value="${Utils.escapeHtml(c.range||'A1:ZZ10000')}" style="width:150px;" placeholder="Sheet1 or Sheet1!A1:H200"></td>
-      <td><button class="btn btn-sm" data-conn-del="${i}" type="button">✕</button></td>
+    <tr><th>Name</th><th>CRM</th><th>Subject</th><th>Body</th><th></th></tr>
+    ${Settings.mailTemplateDraft.map((t,i)=>`<tr>
+      <td><input data-mt="${i}" data-f="name" value="${Utils.escapeHtml(t.name||'')}" style="width:140px;"></td>
+      <td>
+        <select data-mt="${i}" data-f="kind" style="width:110px;">
+          <option value="4qt" ${t.kind!=='lsq'?'selected':''}>4QT</option>
+          <option value="lsq" ${t.kind==='lsq'?'selected':''}>LeadSquared</option>
+        </select>
+      </td>
+      <td><input data-mt="${i}" data-f="subject" value="${Utils.escapeHtml(t.subject||'')}" style="width:260px;"></td>
+      <td><textarea data-mt="${i}" data-f="body" rows="4" style="width:320px;font-family:inherit;">${Utils.escapeHtml(t.body||'')}</textarea></td>
+      <td><button class="btn btn-sm" data-mt-del="${i}" type="button">✕</button></td>
     </tr>`).join('')}
   </table>`;
-  el.querySelectorAll('input[data-conn]').forEach(inp=>{
+  el.querySelectorAll('[data-mt]').forEach(inp=>{
     inp.addEventListener('input', function(){
-      Settings.connectionsDraft[+this.dataset.conn][this.dataset.f] = this.value;
+      Settings.mailTemplateDraft[+this.dataset.mt][this.dataset.f] = this.value;
     });
   });
-  el.querySelectorAll('[data-conn-del]').forEach(btn=>{
+  el.querySelectorAll('[data-mt-del]').forEach(btn=>{
     btn.addEventListener('click', function(){
-      Settings.connectionsDraft.splice(+this.dataset.connDel, 1);
-      Settings.renderConnectionsTable();
+      Settings.mailTemplateDraft.splice(+this.dataset.mtDel, 1);
+      Settings.renderMailTemplateTable();
     });
   });
 };
