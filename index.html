@@ -556,7 +556,8 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         <div class="mail-preview" id="m4-preview"></div>
         <div class="btn-row" style="margin-top:12px;">
           <button class="btn" id="m4-copy-subject">Copy subject</button>
-          <button class="btn btn-primary" id="m4-copy-mail">Copy mail</button>
+          <button class="btn" id="m4-copy-mail">Copy mail</button>
+          <button class="btn btn-primary" id="m4-open-gmail">Open in Gmail</button>
           <button class="btn" id="m4-dl-csv" style="display:none;">Download CSV</button>
           <button class="btn" id="m4-dl-xlsx" style="display:none;">Download Excel</button>
         </div>
@@ -3275,6 +3276,12 @@ document.addEventListener('DOMContentLoaded', function(){
 
   document.getElementById('m4-copy-subject').addEventListener('click', ()=> Utils.copyToClipboard(M4.subject(), 'Subject copied'));
   document.getElementById('m4-copy-mail').addEventListener('click', ()=> Utils.copyToClipboard(M4.subject()+'\n\n'+M4.body(), 'Mail copied'));
+  document.getElementById('m4-open-gmail').addEventListener('click', function(){
+    const su = encodeURIComponent(M4.subject());
+    const body = encodeURIComponent(M4.body());
+    const url = `https://mail.google.com/mail/?view=cm&fs=1&su=${su}&body=${body}`;
+    window.open(url, '_blank');
+  });
   document.getElementById('m4-dl-csv').addEventListener('click', ()=>{
     Utils.downloadCsv(M4.attachmentRows(), [{key:'name',label:'Name'},{key:'source',label:'Source'},{key:'project',label:'Project'}], 'mapping_attachment.csv');
   });
