@@ -500,24 +500,51 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       <div class="view-head">
         <div>
           <h1>Mapping Mail Generator</h1>
-          <p>Turn a quick informal note into a ready-to-send mapping mail for 4QT or LeadSquared.</p>
+          <p>Pick a template, fill in the details, get your mail — no extra steps.</p>
         </div>
       </div>
 
       <div class="card">
-        <h2>1 · Paste the informal mapping note</h2>
-        <div class="field">
-          <label>Example: "smartworld elie saab noida meta mv to dev makkar team tushar and piyush"</label>
-          <textarea id="m4-raw" rows="2" placeholder="Type or paste the informal mapping instruction here…"></textarea>
+        <h2>1 · Choose a template</h2>
+        <div class="mail-grid">
+          <div class="field">
+            <label>Mail Template</label>
+            <select id="m4-template-select"></select>
+          </div>
+          <div>
+            <button class="btn btn-sm" id="m4-new-template-toggle" type="button">+ Create new template</button>
+          </div>
         </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="m4-parse">Parse note</button>
-          <span class="mini-note">Nothing is guessed silently — anything the parser can't determine is left blank and flagged for you to fill in.</span>
+        <div id="m4-new-template-form" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-strong);">
+          <div class="mail-grid">
+            <div class="field"><label>Template Name</label><input id="m4-nt-name" placeholder="e.g. 4QT Urgent Escalation"></div>
+            <div class="field"><label>CRM</label>
+              <select id="m4-nt-kind"><option value="4qt">4QT</option><option value="lsq">LeadSquared</option></select>
+            </div>
+          </div>
+          <div class="field"><label>Subject</label><input id="m4-nt-subject" placeholder="Project Mapping Update - {{project}} - Source:{{source}}"></div>
+          <div class="field"><label>Body</label><textarea id="m4-nt-body" rows="6" placeholder="Use {{project}}, {{source}}, {{salesHead}}, {{teamMembersList}}"></textarea></div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="m4-nt-save">Save &amp; use this template</button>
+            <button class="btn" id="m4-nt-cancel">Cancel</button>
+            <span class="mini-note">Placeholders: {{project}}, {{source}}, {{salesHead}}, {{teamMembersList}}</span>
+          </div>
         </div>
       </div>
 
-      <div class="card" id="m4-fields-card" style="display:none;">
-        <h2>2 · Confirm mapping details</h2>
+      <div class="card">
+        <h2>2 · Fill in the details</h2>
+        <details style="margin-bottom:12px;">
+          <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--accent-dark);">Optional: paste an informal note to auto-fill instead of typing fields below</summary>
+          <div class="field" style="margin-top:10px;">
+            <label>Example: "smartworld elie saab noida meta mv to dev makkar team tushar and piyush"</label>
+            <textarea id="m4-raw" rows="2" placeholder="Type or paste the informal mapping instruction here…"></textarea>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="m4-parse">Parse note</button>
+            <span class="mini-note">Nothing is guessed silently — anything the parser can't determine is left blank and flagged for you to fill in below.</span>
+          </div>
+        </details>
         <div class="mail-grid">
           <div>
             <div class="field" id="f-project"><label>Project Name (BPL) <span class="req-star">*</span></label><input id="m4-project"></div>
@@ -532,39 +559,18 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         </div>
       </div>
 
-      <div class="card" id="m4-mail-card" style="display:none;">
-        <h2>3 · Generate mail</h2>
-        <div class="mail-tabs">
-          <button class="mail-tab active" data-tab="4qt">4QT Mail</button>
-          <button class="mail-tab" data-tab="lsq">LeadSquared Mail</button>
+      <div class="card">
+        <h2>3 · Your mail</h2>
+        <div class="mail-preview" id="m4-preview"></div>
+        <div class="btn-row" style="margin-top:12px;">
+          <button class="btn" id="m4-copy-subject">Copy subject</button>
+          <button class="btn btn-primary" id="m4-copy-mail">Copy mail</button>
+          <button class="btn" id="m4-dl-csv" style="display:none;">Download CSV</button>
+          <button class="btn" id="m4-dl-xlsx" style="display:none;">Download Excel</button>
         </div>
-
-        <div id="m4-tab-4qt">
-          <div class="field" style="max-width:320px;">
-            <label>Mail Template</label>
-            <select id="m4-4qt-template-select"></select>
-          </div>
-          <div class="mail-preview" id="m4-4qt-preview"></div>
-          <div class="btn-row" style="margin-top:12px;">
-            <button class="btn" id="m4-4qt-copy-subject">Copy subject</button>
-            <button class="btn btn-primary" id="m4-4qt-copy-mail">Copy mail</button>
-          </div>
-        </div>
-
-        <div id="m4-tab-lsq" style="display:none;">
-          <div class="field" style="max-width:320px;">
-            <label>Mail Template</label>
-            <select id="m4-lsq-template-select"></select>
-          </div>
-          <div class="mail-preview" id="m4-lsq-preview"></div>
-          <h2 style="margin-top:16px;">Attachment preview</h2>
+        <div id="m4-attach-wrap" style="display:none;margin-top:16px;">
+          <h2>Attachment preview</h2>
           <table class="attach-table" id="m4-attach-table"></table>
-          <div class="btn-row" style="margin-top:12px;">
-            <button class="btn" id="m4-lsq-copy-subject">Copy subject</button>
-            <button class="btn btn-primary" id="m4-lsq-copy-mail">Copy mail</button>
-            <button class="btn" id="m4-lsq-dl-csv">Download CSV</button>
-            <button class="btn" id="m4-lsq-dl-xlsx">Download Excel</button>
-          </div>
         </div>
       </div>
     </section>
@@ -3179,8 +3185,10 @@ M3.buildReport = function(rows){
 <script>
 /* ============================================================
    MODULE 4 — MAPPING MAIL GENERATOR
+   Simplified flow: pick (or create) one template → fill fields → mail shows
+   immediately, no separate "generate" step and no gating behind parsing a note.
    ============================================================ */
-const M4 = { project:'', source:'', sourceKnown:false, salesHead:'', team:[], activeTab:'4qt', locationSuggestion:null, selectedTemplateId4qt:null, selectedTemplateIdLsq:null };
+const M4 = { project:'', source:'', sourceKnown:false, salesHead:'', team:[''], locationSuggestion:null, selectedTemplateId:null };
 
 /* Build a source keyword list sorted by word-count descending, for greedy contiguous matching.
    Recomputed on each call so edits made in Settings take effect immediately. */
@@ -3243,6 +3251,9 @@ M4.parseNote = function(raw){
 };
 
 document.addEventListener('DOMContentLoaded', function(){
+  M4.renderFields();
+  M4.renderMail();
+
   document.getElementById('m4-parse').addEventListener('click', function(){
     const raw = document.getElementById('m4-raw').value;
     if(Utils.isBlank(raw)){ Utils.toast('Type an informal mapping note first'); return; }
@@ -3264,8 +3275,6 @@ document.addEventListener('DOMContentLoaded', function(){
       }
     }
 
-    document.getElementById('m4-fields-card').style.display = 'block';
-    document.getElementById('m4-mail-card').style.display = 'block';
     M4.renderFields();
     M4.renderMail();
   });
@@ -3287,29 +3296,42 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   });
 
-  document.querySelectorAll('.mail-tab').forEach(tab=>{
-    tab.addEventListener('click', function(){
-      document.querySelectorAll('.mail-tab').forEach(t=>t.classList.remove('active'));
-      tab.classList.add('active');
-      M4.activeTab = tab.dataset.tab;
-      document.getElementById('m4-tab-4qt').style.display = M4.activeTab==='4qt' ? 'block':'none';
-      document.getElementById('m4-tab-lsq').style.display = M4.activeTab==='lsq' ? 'block':'none';
-    });
+  document.getElementById('m4-template-select').addEventListener('change', function(){
+    M4.selectedTemplateId = this.value;
+    M4.renderMail();
   });
 
-  const sel4qt = document.getElementById('m4-4qt-template-select');
-  if(sel4qt) sel4qt.addEventListener('change', function(){ M4.selectedTemplateId4qt = this.value; M4.renderMail(); });
-  const selLsq = document.getElementById('m4-lsq-template-select');
-  if(selLsq) selLsq.addEventListener('change', function(){ M4.selectedTemplateIdLsq = this.value; M4.renderMail(); });
+  // Inline "create a new template" — saves to Settings and redirects straight into using it
+  document.getElementById('m4-new-template-toggle').addEventListener('click', function(){
+    const form = document.getElementById('m4-new-template-form');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  });
+  document.getElementById('m4-nt-cancel').addEventListener('click', function(){
+    document.getElementById('m4-new-template-form').style.display = 'none';
+  });
+  document.getElementById('m4-nt-save').addEventListener('click', function(){
+    const name = document.getElementById('m4-nt-name').value.trim();
+    const kind = document.getElementById('m4-nt-kind').value;
+    const subject = document.getElementById('m4-nt-subject').value.trim();
+    const body = document.getElementById('m4-nt-body').value;
+    if(!name || !subject || !body.trim()){ Utils.toast('Fill in Name, Subject, and Body first'); return; }
+    const newTemplate = {id:'template-'+Date.now(), name, kind, subject, body};
+    Utils.Settings.mailTemplates = (Utils.Settings.mailTemplates || JSON.parse(JSON.stringify(Utils.DEFAULT_MAIL_TEMPLATES))).concat([newTemplate]);
+    Utils.saveSettings();
+    M4.selectedTemplateId = newTemplate.id;
+    document.getElementById('m4-new-template-form').style.display = 'none';
+    ['m4-nt-name','m4-nt-subject','m4-nt-body'].forEach(id=>{ document.getElementById(id).value=''; });
+    M4.renderMail(); // redirects straight to the mail, already using the new template
+    Utils.toast('Template saved — now showing your mail with it');
+    document.getElementById('m4-preview').scrollIntoView({behavior:'smooth', block:'center'});
+  });
 
-  document.getElementById('m4-4qt-copy-subject').addEventListener('click', ()=> Utils.copyToClipboard(M4.subject4qt(), 'Subject copied'));
-  document.getElementById('m4-4qt-copy-mail').addEventListener('click', ()=> Utils.copyToClipboard(M4.subject4qt()+'\n\n'+M4.body4qt(), 'Mail copied'));
-  document.getElementById('m4-lsq-copy-subject').addEventListener('click', ()=> Utils.copyToClipboard(M4.subjectLsq(), 'Subject copied'));
-  document.getElementById('m4-lsq-copy-mail').addEventListener('click', ()=> Utils.copyToClipboard(M4.subjectLsq()+'\n\n'+M4.bodyLsq(), 'Mail copied'));
-  document.getElementById('m4-lsq-dl-csv').addEventListener('click', ()=>{
+  document.getElementById('m4-copy-subject').addEventListener('click', ()=> Utils.copyToClipboard(M4.subject(), 'Subject copied'));
+  document.getElementById('m4-copy-mail').addEventListener('click', ()=> Utils.copyToClipboard(M4.subject()+'\n\n'+M4.body(), 'Mail copied'));
+  document.getElementById('m4-dl-csv').addEventListener('click', ()=>{
     Utils.downloadCsv(M4.attachmentRows(), [{key:'name',label:'Name'},{key:'source',label:'Source'},{key:'project',label:'Project'}], 'mapping_attachment.csv');
   });
-  document.getElementById('m4-lsq-dl-xlsx').addEventListener('click', ()=>{
+  document.getElementById('m4-dl-xlsx').addEventListener('click', ()=>{
     Utils.downloadExcel(M4.attachmentRows(), [{key:'name',label:'Name'},{key:'source',label:'Source'},{key:'project',label:'Project'}], 'mapping_attachment.xlsx');
   });
 });
@@ -3348,13 +3370,13 @@ M4.updateFieldWarnings = function(){
   document.getElementById('f-project').classList.toggle('warn', Utils.isBlank(M4.project));
   document.getElementById('f-source').classList.toggle('warn', Utils.isBlank(M4.source));
   document.getElementById('f-head').classList.toggle('warn', Utils.isBlank(M4.salesHead));
-  M4._setFlag('f-project', Utils.isBlank(M4.project), 'Could not detect a project — enter it manually.');
+  M4._setFlag('f-project', Utils.isBlank(M4.project), 'Enter the project name (BPL format).');
   M4._setFlag('f-source', Utils.isBlank(M4.source), 'Source not recognized in the source master — enter the official source, or add it to the master.');
   if(!Utils.isBlank(M4.salesHead) && M4.locationSuggestion){
     M4._setFlag('f-head', true, M4.locationSuggestion);
     document.getElementById('f-head').classList.add('warn');
   } else {
-    M4._setFlag('f-head', Utils.isBlank(M4.salesHead), 'No "to <name>" found — enter the Sales Head manually.');
+    M4._setFlag('f-head', Utils.isBlank(M4.salesHead), 'Enter the Sales Head this project should map to.');
   }
 };
 M4._setFlag = function(fieldId, show, text){
@@ -3368,17 +3390,15 @@ M4._setFlag = function(fieldId, show, text){
 
 M4.cleanTeam = function(){ return M4.team.map(t=>t.trim()).filter(Boolean); };
 
-/* Templates for a given CRM ("4qt" or "lsq"), always at least the built-in
-   defaults even if Settings somehow has none of that kind. */
-M4.templatesFor = function(kind){
-  const all = (Utils.Settings.mailTemplates || []).filter(t=>t.kind===kind);
-  if(all.length) return all;
-  return Utils.DEFAULT_MAIL_TEMPLATES.filter(t=>t.kind===kind);
+/* All templates, any CRM, one flat list — selecting one determines both the
+   text AND whether the attachment section shows (based on that template's kind). */
+M4.allTemplates = function(){
+  const all = Utils.Settings.mailTemplates;
+  return (all && all.length) ? all : Utils.DEFAULT_MAIL_TEMPLATES;
 };
-M4.currentTemplate = function(kind){
-  const list = M4.templatesFor(kind);
-  const selectedId = kind==='4qt' ? M4.selectedTemplateId4qt : M4.selectedTemplateIdLsq;
-  return list.find(t=>t.id===selectedId) || list[0];
+M4.currentTemplate = function(){
+  const list = M4.allTemplates();
+  return list.find(t=>t.id===M4.selectedTemplateId) || list[0];
 };
 M4.applyTemplate = function(str){
   const team = M4.cleanTeam();
@@ -3389,15 +3409,12 @@ M4.applyTemplate = function(str){
     salesHead: M4.salesHead || '[Sales Head]',
     teamMembersList
   };
-  let out = str;
+  let out = str || '';
   Object.keys(vars).forEach(k=>{ out = out.split('{{'+k+'}}').join(vars[k]); });
   return out;
 };
-
-M4.subject4qt = function(){ const t = M4.currentTemplate('4qt'); return M4.applyTemplate(t ? t.subject : ''); };
-M4.body4qt = function(){ const t = M4.currentTemplate('4qt'); return M4.applyTemplate(t ? t.body : ''); };
-M4.subjectLsq = function(){ const t = M4.currentTemplate('lsq'); return M4.applyTemplate(t ? t.subject : ''); };
-M4.bodyLsq = function(){ const t = M4.currentTemplate('lsq'); return M4.applyTemplate(t ? t.body : ''); };
+M4.subject = function(){ const t = M4.currentTemplate(); return M4.applyTemplate(t && t.subject); };
+M4.body = function(){ const t = M4.currentTemplate(); return M4.applyTemplate(t && t.body); };
 
 M4.attachmentRows = function(){
   const team = M4.cleanTeam();
@@ -3405,35 +3422,34 @@ M4.attachmentRows = function(){
   return names.map(n=>({name:n, source:M4.source, project:M4.project}));
 };
 
-M4.renderTemplateSelectors = function(){
-  const sel4qt = document.getElementById('m4-4qt-template-select');
-  const selLsq = document.getElementById('m4-lsq-template-select');
-  if(sel4qt){
-    const list = M4.templatesFor('4qt');
-    if(!M4.selectedTemplateId4qt || !list.find(t=>t.id===M4.selectedTemplateId4qt)) M4.selectedTemplateId4qt = list[0] && list[0].id;
-    sel4qt.innerHTML = list.map(t=>`<option value="${Utils.escapeHtml(t.id)}" ${t.id===M4.selectedTemplateId4qt?'selected':''}>${Utils.escapeHtml(t.name)}</option>`).join('');
-  }
-  if(selLsq){
-    const list = M4.templatesFor('lsq');
-    if(!M4.selectedTemplateIdLsq || !list.find(t=>t.id===M4.selectedTemplateIdLsq)) M4.selectedTemplateIdLsq = list[0] && list[0].id;
-    selLsq.innerHTML = list.map(t=>`<option value="${Utils.escapeHtml(t.id)}" ${t.id===M4.selectedTemplateIdLsq?'selected':''}>${Utils.escapeHtml(t.name)}</option>`).join('');
-  }
+M4.renderTemplateSelect = function(){
+  const sel = document.getElementById('m4-template-select');
+  if(!sel) return;
+  const list = M4.allTemplates();
+  if(!M4.selectedTemplateId || !list.find(t=>t.id===M4.selectedTemplateId)) M4.selectedTemplateId = list[0] && list[0].id;
+  sel.innerHTML = list.map(t=>`<option value="${Utils.escapeHtml(t.id)}" ${t.id===M4.selectedTemplateId?'selected':''}>${Utils.escapeHtml(t.name)} (${t.kind==='lsq'?'LeadSquared':'4QT'})</option>`).join('');
 };
 
 M4.renderMail = function(){
-  M4.renderTemplateSelectors();
-  document.getElementById('m4-4qt-preview').innerHTML =
-    `<div class="mp-subject">Subject: ${Utils.escapeHtml(M4.subject4qt())}</div>${Utils.escapeHtml(M4.body4qt())}`;
-  document.getElementById('m4-lsq-preview').innerHTML =
-    `<div class="mp-subject">Subject: ${Utils.escapeHtml(M4.subjectLsq())}</div>${Utils.escapeHtml(M4.bodyLsq())}`;
+  M4.renderTemplateSelect();
+  const t = M4.currentTemplate();
+  document.getElementById('m4-preview').innerHTML =
+    `<div class="mp-subject">Subject: ${Utils.escapeHtml(M4.subject())}</div>${Utils.escapeHtml(M4.body())}`;
 
-  const rows = M4.attachmentRows();
-  const table = document.getElementById('m4-attach-table');
-  if(!rows.length){
-    table.innerHTML = `<tr><th>Name</th><th>Source</th><th>Project</th></tr><tr><td colspan="3" style="color:var(--text-muted)">No mapping rows yet — add a team member or Sales Head above.</td></tr>`;
-  } else {
-    table.innerHTML = `<tr><th>Name</th><th>Source</th><th>Project</th></tr>` +
-      rows.map(r=>`<tr><td>${Utils.escapeHtml(r.name)}</td><td>${Utils.escapeHtml(r.source)}</td><td>${Utils.escapeHtml(r.project)}</td></tr>`).join('');
+  const isLsq = t && t.kind === 'lsq';
+  document.getElementById('m4-attach-wrap').style.display = isLsq ? 'block' : 'none';
+  document.getElementById('m4-dl-csv').style.display = isLsq ? 'inline-flex' : 'none';
+  document.getElementById('m4-dl-xlsx').style.display = isLsq ? 'inline-flex' : 'none';
+
+  if(isLsq){
+    const rows = M4.attachmentRows();
+    const table = document.getElementById('m4-attach-table');
+    if(!rows.length){
+      table.innerHTML = `<tr><th>Name</th><th>Source</th><th>Project</th></tr><tr><td colspan="3" style="color:var(--text-muted)">No mapping rows yet — add a team member or Sales Head above.</td></tr>`;
+    } else {
+      table.innerHTML = `<tr><th>Name</th><th>Source</th><th>Project</th></tr>` +
+        rows.map(r=>`<tr><td>${Utils.escapeHtml(r.name)}</td><td>${Utils.escapeHtml(r.source)}</td><td>${Utils.escapeHtml(r.project)}</td></tr>`).join('');
+    }
   }
 };
 
