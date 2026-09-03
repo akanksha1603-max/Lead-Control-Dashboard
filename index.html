@@ -557,7 +557,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       <div class="card">
         <h2>2 · Fill in the details</h2>
         <details style="margin-bottom:12px;">
-          <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--accent-dark);">Optional: paste an informal note to auto-fill instead of typing fields below</summary>
+          <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--accent-dark);">Optional: paste an informal note, or upload a file, to auto-fill instead of typing fields below</summary>
           <div class="field" style="margin-top:10px;">
             <label>Example: "smartworld elie saab noida meta mv to dev makkar team tushar and piyush"</label>
             <textarea id="m4-raw" rows="2" placeholder="Type or paste the informal mapping instruction here…"></textarea>
@@ -565,6 +565,11 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           <div class="btn-row">
             <button class="btn btn-primary" id="m4-parse">Parse note</button>
             <span class="mini-note">Nothing is guessed silently — anything the parser can't determine is left blank and flagged for you to fill in below.</span>
+          </div>
+          <div class="field" style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-strong);">
+            <label>Or upload a file (.xlsx, .xls, .csv, .pdf)</label>
+            <input type="file" id="m4-upload-file" accept=".xlsx,.xls,.csv,.pdf">
+            <div class="mini-note" id="m4-upload-status" style="margin-top:6px;">If the file has clear columns (Project/Source/Sales Head/Team Member), those are used directly; otherwise the text is parsed the same way as a pasted note. Always review the fields below before sending either way.</div>
           </div>
         </details>
         <div class="mail-grid">
@@ -588,12 +593,16 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           <button class="btn" id="m4-copy-subject">Copy subject</button>
           <button class="btn" id="m4-copy-mail">Copy mail</button>
           <button class="btn btn-primary" id="m4-open-gmail">Open in Gmail</button>
+          <button class="btn" id="m4-save-lsq-mapping" style="display:none;">Save this mapping to LeadSquared registry</button>
           <button class="btn" id="m4-dl-csv" style="display:none;">Download CSV</button>
           <button class="btn" id="m4-dl-xlsx" style="display:none;">Download Excel</button>
         </div>
         <div id="m4-attach-wrap" style="display:none;margin-top:16px;">
-          <h2>Attachment preview</h2>
+          <h2>Attachment preview <small>One row per person's email — every source and project they've ever been mapped to, accumulated across every mail you've saved</small></h2>
           <table class="attach-table" id="m4-attach-table"></table>
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn btn-sm" id="m4-clear-lsq-registry">Clear registry</button>
+          </div>
         </div>
       </div>
     </section>
@@ -981,13 +990,20 @@ Thank you`
   {
     id:'lsq-standard', name:'LeadSquared Standard', kind:'lsq',
     subject:'Project Mapping Update - {{project}} - Source:{{source}}',
-    body:`Hi Team,
+    body:`Hi Ram Sir,
 
-Please update the LeadSquared mapping as per the details below. The attachment lists each mapping person with their Source and Project.
+Please do the project Mapping as per the below details.
 
 Project Name : {{project}}
 Source : {{source}}
 Map To : Mr. {{salesHead}}
+
+Team Members
+{{teamMembersList}}
+
+@{{salesHead}} Sir, Going Forward, if you need any changes in the project mapping, you can simply reply to this email trail. The CRM team is already included in this email loop.
+
+They will directly pick up your request and update the mapping accordingly.
 
 Thank you`
   }
@@ -1003,7 +1019,8 @@ Utils.DEFAULT_SETTINGS = function(){
     excludedCostCentreNames: ['Vishal'],
     googleApiKey: '',
     liveConnections: [],
-    mailTemplates: JSON.parse(JSON.stringify(Utils.DEFAULT_MAIL_TEMPLATES))
+    mailTemplates: JSON.parse(JSON.stringify(Utils.DEFAULT_MAIL_TEMPLATES)),
+    lsqMappingRegistry: [] // [{email, sources:[...], projects:[...]}] — accumulates across every LSQ mapping mail sent, since LeadSquared's own attachment format is one row per person listing every source/project they've ever been mapped to, not just the current mail
   };
 };
 Utils._storageAvailable = (function(){
@@ -1195,7 +1212,7 @@ Utils.classifyStatus = function(rawStatus){
 Utils.COLUMN_ALIASES = {
   project:      ['Project Name','Project','ProjectName','Property','Opportunity Project','Opportunity Name','Project Name (BPL)'],
   source:       ['Sub Source','Sub-source','Subsource','Opportunity Sub Source','Source/Sub-source','CRM Source/Sub-source','Source','Lead Source','Opportunity Source','Source Name'],
-  costCentre:   ['Cost Centre Person Name','Cost Center Person Name','Cost Centre Person','Cost Center Person','CRM User','Owner (User Name)','Enquiry Owner','Handled By','Lead Owner','Owner','Assigned To','Sales Person','Employee Name','Cost Centre','Cost Center','Email','Owner Email'],
+  costCentre:   ['Cost Centre Person Name','Cost Center Person Name','Cost Centre Person','Cost Center Person','Team Member','CRM User','Owner (User Name)','Enquiry Owner','Handled By','Lead Owner','Owner','Assigned To','Sales Person','Employee Name','Cost Centre','Cost Center','Email','Owner Email'],
   salesHead:    ['Sales Head','SalesHead','Reporting Manager','Manager','Team Head','Team Lead'],
   status:       ['Current Status','Lead Status','Lead Stage','Stage','Status','Disposition','Opportunity Status'],
   date:         ['Date','Created Date','Created On','Lead Date','Enquiry Date','Opportunity Date'],
@@ -3328,7 +3345,7 @@ M3.buildSimpleReport = function(rows, useSource, useDate){
    Simplified flow: pick (or create) one template → fill fields → mail shows
    immediately, no separate "generate" step and no gating behind parsing a note.
    ============================================================ */
-const M4 = { project:'', source:'', sourceKnown:false, salesHead:'', team:[''], locationSuggestion:null, selectedTemplateId:null };
+const M4 = { project:'', source:'', sourceKnown:false, salesHead:'', team:[{name:'',email:''}], locationSuggestion:null, selectedTemplateId:null };
 
 /* Build a source keyword list sorted by word-count descending, for greedy contiguous matching.
    Recomputed on each call so edits made in Settings take effect immediately. */
@@ -3385,9 +3402,84 @@ M4.parseNote = function(raw){
     .split(/,| and | & |\n/i)
     .map(s=>s.trim())
     .filter(s=>s && !/^members?$/i.test(s))
-    .map(s=>Utils.titleCase(s));
+    .map(s=>({name: Utils.titleCase(s), email:''}));
 
   return {project, source: sourceCanonical, sourceKnown, salesHead, team};
+};
+
+/* Upload path: read the file (reusing the same reader used everywhere else in
+   this dashboard, so .xlsx/.xls/.csv/.pdf all work). If it has recognizable
+   columns (Project/Source/Sales Head/Team Member — the same alias matching
+   used across every module), use the first data row directly. Otherwise
+   flatten everything to text and run it through the exact same informal-note
+   parser as pasting text, rather than a second, different heuristic. */
+M4.handleUploadFile = async function(file){
+  const statusEl = document.getElementById('m4-upload-status');
+  statusEl.textContent = 'Reading ' + file.name + '…';
+  try{
+    const result = await Utils.readFileAsAoaSheets(file);
+    let bestSheet = result.sheetNames[0], bestScore = -1;
+    result.sheetNames.forEach(sn=>{
+      const nonBlank = result.aoaBySheet[sn].filter(r=>r.some(c=>Utils.norm(c)!=='')).length;
+      if(nonBlank > bestScore){ bestScore = nonBlank; bestSheet = sn; }
+    });
+    const aoa = result.aoaBySheet[bestSheet];
+    const hdrIdx = Utils.detectHeaderRow(aoa);
+    const headers = (aoa[hdrIdx]||[]).map((h,i)=> Utils.norm(h) || ('Column '+(i+1)));
+    const rows = [];
+    for(let r=hdrIdx+1; r<aoa.length; r++){
+      const arr = aoa[r];
+      if(!arr || !arr.some(c=>Utils.norm(c)!=='')) continue;
+      const obj = {}; headers.forEach((h,i)=>{ obj[h] = arr[i]!==undefined ? arr[i] : ''; });
+      rows.push(obj);
+    }
+
+    if(rows.length){
+      const detected = Utils.detectColumns(headers, ['project','source','salesHead','costCentre','userName'], rows);
+      const emailCol = headers.find(h=>/email/i.test(h));
+      if(detected.project){
+        const row = rows[0];
+        M4.project = Utils.val(row, detected.project);
+        if(detected.source) M4.source = Utils.val(row, detected.source);
+        if(detected.salesHead) M4.salesHead = Utils.val(row, detected.salesHead);
+        // Never use the Email column as the team-member NAME source, even if it
+        // matched as an alias — Email always has its own dedicated lookup below.
+        const teamCol = [detected.costCentre, detected.userName].find(c=> c && c !== emailCol);
+        const teamRaw = teamCol ? Utils.val(row, teamCol) : '';
+        const emailRaw = emailCol ? Utils.val(row, emailCol) : '';
+        const names = teamRaw ? Utils.splitAndPrettifyNames(teamRaw).split(', ').filter(Boolean) : [];
+        const emails = emailRaw ? emailRaw.split(/[,;\n]/).map(e=>e.trim()).filter(Boolean) : [];
+        M4.team = names.length ? names.map((n,i)=>({name:n, email: emails[i]||''}))
+          : (emails.length ? emails.map(e=>({name:'', email:e})) : [{name:'', email:''}]);
+        M4.locationSuggestion = null;
+        statusEl.textContent = `✓ Loaded ${file.name} — used row 1 of ${rows.length} from the "${bestSheet}" sheet. Review the fields below before sending.`;
+        M4.renderFields();
+        M4.renderMail();
+        return;
+      }
+    }
+
+    // No recognizable table columns — flatten whatever text exists and parse it
+    // the same way a pasted informal note would be.
+    const flatText = rows.length
+      ? rows.map(r=>Object.values(r).join(' ')).join('\n')
+      : aoa.map(r=>r.join(' ')).join('\n');
+    if(Utils.isBlank(flatText)){
+      statusEl.textContent = `✕ ${file.name} appears to be empty — try a different file, or paste the text instead.`;
+      return;
+    }
+    const parsed = M4.parseNote(flatText);
+    if(parsed.project) M4.project = parsed.project;
+    if(parsed.sourceKnown) M4.source = parsed.source;
+    if(parsed.salesHead) M4.salesHead = parsed.salesHead;
+    if(parsed.team.length) M4.team = parsed.team;
+    M4.locationSuggestion = null;
+    statusEl.textContent = `✓ Loaded ${file.name} — no clear table columns found, parsed as freeform text instead. Review the fields below before sending.`;
+    M4.renderFields();
+    M4.renderMail();
+  }catch(err){
+    statusEl.textContent = `✕ Could not read ${file.name} — try pasting the text instead, or check the file format.`;
+  }
 };
 
 document.addEventListener('DOMContentLoaded', function(){
@@ -3401,7 +3493,7 @@ document.addEventListener('DOMContentLoaded', function(){
     M4.project = parsed.project;
     M4.source = parsed.sourceKnown ? parsed.source : '';
     M4.salesHead = parsed.salesHead;
-    M4.team = parsed.team.length ? parsed.team : [''];
+    M4.team = parsed.team.length ? parsed.team : [{name:'',email:''}];
     M4.locationSuggestion = null;
 
     if(Utils.isBlank(M4.salesHead)){
@@ -3420,9 +3512,13 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 
   document.getElementById('m4-add-member').addEventListener('click', function(){
-    M4.team.push('');
+    M4.team.push({name:'', email:''});
     M4.renderFields();
     M4.renderMail();
+  });
+
+  document.getElementById('m4-upload-file').addEventListener('change', function(){
+    if(this.files.length) M4.handleUploadFile(this.files[0]);
   });
 
   ['m4-project','m4-source','m4-head'].forEach(id=>{
@@ -3474,6 +3570,14 @@ document.addEventListener('DOMContentLoaded', function(){
     const url = `https://mail.google.com/mail/?view=cm&fs=1&su=${su}&body=${body}`;
     window.open(url, '_blank');
   });
+  document.getElementById('m4-save-lsq-mapping').addEventListener('click', ()=> M4.saveLsqMapping());
+  document.getElementById('m4-clear-lsq-registry').addEventListener('click', ()=>{
+    if(!confirm('Clear the entire LeadSquared mapping registry? This cannot be undone.')) return;
+    Utils.Settings.lsqMappingRegistry = [];
+    Utils.saveSettings();
+    M4.renderMail();
+    Utils.toast('Registry cleared');
+  });
   document.getElementById('m4-dl-csv').addEventListener('click', ()=>{
     Utils.downloadCsv(M4.attachmentRows(), [{key:'name',label:'Name'},{key:'source',label:'Source'},{key:'project',label:'Project'}], 'mapping_attachment.csv');
   });
@@ -3490,16 +3594,17 @@ M4.renderFields = function(){
 
   const teamEl = document.getElementById('m4-team');
   teamEl.innerHTML = '';
-  M4.team.forEach((name, i)=>{
+  M4.team.forEach((member, i)=>{
     const row = document.createElement('div');
     row.className = 't-row';
-    row.innerHTML = `<input type="text" value="${Utils.escapeHtml(name)}" data-idx="${i}" placeholder="Member name">
+    row.innerHTML = `<input type="text" value="${Utils.escapeHtml(member.name||'')}" data-idx="${i}" data-f="name" placeholder="Member name" style="flex:1;">
+      <input type="text" value="${Utils.escapeHtml(member.email||'')}" data-idx="${i}" data-f="email" placeholder="Email (for LeadSquared)" style="flex:1;">
       <button class="btn btn-sm" data-remove="${i}" title="Remove">✕</button>`;
     teamEl.appendChild(row);
   });
   teamEl.querySelectorAll('input').forEach(inp=>{
     inp.addEventListener('input', function(){
-      M4.team[+this.dataset.idx] = this.value;
+      M4.team[+this.dataset.idx][this.dataset.f] = this.value;
       M4.renderMail();
     });
   });
@@ -3534,7 +3639,7 @@ M4._setFlag = function(fieldId, show, text){
   } else if(flag){ flag.remove(); }
 };
 
-M4.cleanTeam = function(){ return M4.team.map(t=>t.trim()).filter(Boolean); };
+M4.cleanTeam = function(){ return M4.team.filter(m=> (m.name||'').trim() || (m.email||'').trim()); };
 
 /* All templates, any CRM, one flat list — selecting one determines both the
    text AND whether the attachment section shows (based on that template's kind). */
@@ -3548,11 +3653,21 @@ M4.currentTemplate = function(){
 };
 M4.applyTemplate = function(str){
   const team = M4.cleanTeam();
-  const teamMembersList = team.length ? team.map((m,i)=>`${i+1}. ${m}`).join('\n') : '1. [Add team member]';
+  // Normalized regardless of how it was typed — direct field entry and the note
+  // parser now both produce the same consistent Title Case output in the mail,
+  // no matter whether the person typed ALL CAPS, all lowercase, or mixed case.
+  const teamMembersList = team.length ? team.map((m,i)=>`${i+1}. ${Utils.titleCase(m.name || m.email)}`).join('\n') : '1. [Add team member]';
+  // Source: resolve through the Source Master for its official canonical name/casing
+  // when it matches something known; otherwise fall back to Title Case of whatever
+  // was typed. resolveSource's own fallback echoes back the raw input as "canonical"
+  // when nothing matches, so check .unmapped rather than relying on .canonical being
+  // empty — it never is.
+  const sourceInfo = M4.source ? Utils.resolveSource(M4.source) : null;
+  const resolvedSource = sourceInfo && !sourceInfo.unmapped ? sourceInfo.canonical : (M4.source ? Utils.titleCase(M4.source) : '');
   const vars = {
-    project: M4.project || '[Project BPL]',
-    source: M4.source || '[Source]',
-    salesHead: M4.salesHead || '[Sales Head]',
+    project: M4.project ? Utils.titleCase(M4.project) : '[Project BPL]',
+    source: resolvedSource || '[Source]',
+    salesHead: M4.salesHead ? Utils.titleCase(M4.salesHead) : '[Sales Head]',
     teamMembersList
   };
   let out = str || '';
@@ -3562,10 +3677,44 @@ M4.applyTemplate = function(str){
 M4.subject = function(){ const t = M4.currentTemplate(); return M4.applyTemplate(t && t.subject); };
 M4.body = function(){ const t = M4.currentTemplate(); return M4.applyTemplate(t && t.body); };
 
-M4.attachmentRows = function(){
+/* LeadSquared's own attachment format isn't "one row per person for this one
+   mail" — it's one row per person's EMAIL, listing every source and project
+   they've ever been mapped to (comma-joined), accumulated across every LSQ
+   mapping mail sent over time. So this reads from — and this mail's "Save
+   this mapping" button writes to — a persistent registry, not just the
+   current session's fields. Source is kept as raw text (not canonicalized),
+   since LeadSquared's real file uses short raw codes like "XD"/"GTPL"/"PPC". */
+M4.saveLsqMapping = function(){
   const team = M4.cleanTeam();
-  const names = team.length ? team : (M4.salesHead ? [M4.salesHead] : []);
-  return names.map(n=>({name:n, source:M4.source, project:M4.project}));
+  const withEmail = team.filter(m=>(m.email||'').trim());
+  if(!withEmail.length){ Utils.toast('Add at least one team member with an email first'); return; }
+  if(Utils.isBlank(M4.source) || Utils.isBlank(M4.project)){ Utils.toast('Project and Source are required before saving a mapping'); return; }
+
+  const registry = Utils.Settings.lsqMappingRegistry || [];
+  const sourceVal = M4.source.trim();
+  const projectVal = Utils.titleCase(M4.project);
+
+  withEmail.forEach(m=>{
+    const email = m.email.trim().toLowerCase();
+    let entry = registry.find(e=>e.email.toLowerCase()===email);
+    if(!entry){ entry = {email: m.email.trim(), sources:[], projects:[]}; registry.push(entry); }
+    if(!entry.sources.some(s=>s.toLowerCase()===sourceVal.toLowerCase())) entry.sources.push(sourceVal);
+    if(!entry.projects.some(p=>p.toLowerCase()===projectVal.toLowerCase())) entry.projects.push(projectVal);
+  });
+
+  Utils.Settings.lsqMappingRegistry = registry;
+  Utils.saveSettings();
+  Utils.toast(`Saved — mapping registry now has ${registry.length} person(s)`);
+  M4.renderMail();
+};
+
+M4.attachmentRows = function(){
+  const registry = Utils.Settings.lsqMappingRegistry || [];
+  return registry.map(e=>({
+    name: e.email,
+    source: e.sources.join(','),
+    project: e.projects.join(',')
+  }));
 };
 
 M4.renderTemplateSelect = function(){
@@ -3584,6 +3733,7 @@ M4.renderMail = function(){
 
   const isLsq = t && t.kind === 'lsq';
   document.getElementById('m4-attach-wrap').style.display = isLsq ? 'block' : 'none';
+  document.getElementById('m4-save-lsq-mapping').style.display = isLsq ? 'inline-flex' : 'none';
   document.getElementById('m4-dl-csv').style.display = isLsq ? 'inline-flex' : 'none';
   document.getElementById('m4-dl-xlsx').style.display = isLsq ? 'inline-flex' : 'none';
 
