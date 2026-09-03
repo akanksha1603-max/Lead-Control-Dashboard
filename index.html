@@ -193,6 +193,8 @@ table.data thead th{
 }
 table.data tbody td{padding:8px 10px;border-top:1px solid var(--line);vertical-align:top;white-space:nowrap;}
 table.data tbody tr:nth-child(even){background:#FAFAF8;}
+table.data tbody tr.total-row{background:var(--paper);border-top:2px solid var(--line-strong);}
+table.data tbody tr.total-row td{padding-top:10px;padding-bottom:10px;}
 table.data tbody tr:hover{background:var(--accent-tint);}
 table.data td.wrap,table.data th.wrap{white-space:normal;}
 
@@ -1904,6 +1906,7 @@ function DataTable(opts){
   this.pageSize = opts.pageSize || (Utils.Settings && Utils.Settings.pageSize) || 50;
   this.filename = opts.filename || 'report.xlsx';
   this.onChange = opts.onChange || null;
+  this.totalColumns = opts.totalColumns || null;
   this.page = 1;
   this.filters = {};
   this.searchTerm = '';
@@ -2134,7 +2137,19 @@ DataTable.prototype.render = function(){
         }
         return `<td class="${c.wrap?'wrap':''}">${Utils.escapeHtml(v)}</td>`;
       }).join('') + '</tr>';
-    }).join('') + '</tbody>';
+    }).join('');
+    // Total row — sums the requested columns across every filtered row, not just
+    // the current page, so it stays correct while paginating or filtering.
+    if(this.totalColumns && this.totalColumns.length){
+      const sums = {};
+      this.totalColumns.forEach(key=>{ sums[key] = filtered.reduce((s,r)=> s + (parseFloat(r[key])||0), 0); });
+      tbody += '<tr class="total-row">' + this.columns.map((c,i)=>{
+        if(i===0) return `<td><strong>Total</strong></td>`;
+        if(this.totalColumns.includes(c.key)) return `<td><strong>${sums[c.key]}</strong></td>`;
+        return `<td></td>`;
+      }).join('') + '</tr>';
+    }
+    tbody += '</tbody>';
     table.innerHTML = thead + tbody;
   }
 
@@ -2751,7 +2766,7 @@ M2.renderSummaries = function(leads){
   ];
   M2.summaryTable = new DataTable({
     prefix:'m2sum', columns:pivotColumns, rows:pivotRows, filterDefs:pivotFilterDefs,
-    filename:'cost_centre_team_source_summary.xlsx', pageSize:50
+    filename:'cost_centre_team_source_summary.xlsx', pageSize:50, totalColumns:['count']
   });
 
   // ---- Not Connected reason breakdown, straight from the executive/CRM remarks ----
