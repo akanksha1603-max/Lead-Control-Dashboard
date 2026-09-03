@@ -465,6 +465,34 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           <h2>Project name matching</h2>
           <div id="m3-match-summary"></div>
         </div>
+        <div class="card" id="m3-agency-gen-card" style="display:none;">
+          <h2>Agency Lead Generation Summary</h2>
+          <div class="filter-bar" id="m3agen-filters"></div>
+          <div class="table-wrap"><table class="data" id="m3agen-table"></table></div>
+          <div class="table-foot">
+            <span class="rec-count" id="m3agen-count"></span>
+            <div class="pager" id="m3agen-pager"></div>
+          </div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button class="btn" id="m3agen-clear">Clear filters</button>
+            <button class="btn" id="m3agen-dl-full">Download full Excel</button>
+            <button class="btn btn-primary" id="m3agen-dl-filtered">Download filtered Excel</button>
+          </div>
+        </div>
+        <div class="card" id="m3-daily-gap-card" style="display:none;">
+          <h2>Daily Agency vs CRM Gap</h2>
+          <div class="filter-bar" id="m3daily-filters"></div>
+          <div class="table-wrap"><table class="data" id="m3daily-table"></table></div>
+          <div class="table-foot">
+            <span class="rec-count" id="m3daily-count"></span>
+            <div class="pager" id="m3daily-pager"></div>
+          </div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button class="btn" id="m3daily-clear">Clear filters</button>
+            <button class="btn" id="m3daily-dl-full">Download full Excel</button>
+            <button class="btn btn-primary" id="m3daily-dl-filtered">Download filtered Excel</button>
+          </div>
+        </div>
         <div class="card">
           <h2>Report</h2>
           <div class="legend">
@@ -1024,6 +1052,16 @@ Utils.prettifyPersonName = function(v){
     return s.split(/[._]+/).filter(Boolean).map(w=> w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
   }
   return s;
+};
+/* Some CRM exports put several people's names in one cell for a single row
+   (e.g. "John, Mary, Steve" as one Team Member value) rather than one row per
+   person. Splitting first — then prettifying each name individually — avoids
+   mangling the combined string as if it were a single garbled name. */
+Utils.splitAndPrettifyNames = function(v){
+  const s = Utils.norm(v);
+  if(!s) return '';
+  const parts = s.split(/\s*[,;&\n\/]\s*|\s+and\s+/i).map(p=>p.trim()).filter(Boolean);
+  return parts.map(Utils.prettifyPersonName).join(', ');
 };
 
 /* ---------- Source Master (editable via Settings tab; Utils.Settings.sourceMaster is the live copy) ---------- */
@@ -2164,7 +2202,6 @@ const M1_OURS_FIELDS = [
   {key:'crm', label:'CRM (leave unmapped to auto-identify by location)', required:false},
   {key:'project', label:'Project Name (BPL)', required:true},
   {key:'source', label:'Source / Sub-source', required:true},
-  {key:'agency', label:'Agency Name', required:false},
   {key:'salesHead', label:'Sales Head / Team Lead', required:false},
   {key:'costCentre', label:'Cost Centre Person Name / User', required:true},
   {key:'userName', label:'Team Member (CRM login/handler name, if different from Cost Centre Person)', required:false},
@@ -2212,7 +2249,7 @@ M1.generate = async function(){
     const resolved = Utils.resolveSource(sourceRaw);
     const costCentre = Utils.prettifyPersonName(Utils.val(row, crmMap.costCentre));
     const salesHead = Utils.prettifyPersonName(Utils.val(row, crmMap.salesHead));
-    const userName = Utils.prettifyPersonName(Utils.val(row, crmMap.userName));
+    const userName = Utils.splitAndPrettifyNames(Utils.val(row, crmMap.userName));
     const date = Utils.val(row, crmMap.date);
     const key = Utils.normKey(crm) + '|' + Utils.normLoose(project) + '|' + Utils.normKey(resolved.canonical);
     if(!crmIndex[key]) crmIndex[key] = [];
@@ -2229,7 +2266,7 @@ M1.generate = async function(){
     const agency = Utils.val(row, oursMap.agency);
     let salesHead = Utils.prettifyPersonName(Utils.val(row, oursMap.salesHead));
     let expectedCostCentre = Utils.prettifyPersonName(Utils.val(row, oursMap.costCentre));
-    const expectedUserName = Utils.prettifyPersonName(Utils.val(row, oursMap.userName));
+    const expectedUserName = Utils.splitAndPrettifyNames(Utils.val(row, oursMap.userName));
     const resolvedSource = Utils.resolveSource(sourceRaw);
     const contamination = Utils.detectProjectContamination(project);
 
@@ -2378,30 +2415,14 @@ M1.buildReport = function(rows, crmContaminatedCount){
     {key:'expectedUserName', label:'Expected Team Member'},
     {key:'actualUserName', label:'Actual Team Member'},
     {key:'result', label:'Mapping Result', pill:true},
-    {key:'crm', label:'CRM'},
-    {key:'date', label:'Date'},
-    {key:'projectQuality', label:'Project Name Quality', pill:true},
-    {key:'projectQualityDetail', label:'Contamination Detail', wrap:true},
-    {key:'agency', label:'Agency Name'},
-    {key:'expectedCostCentre', label:'Expected Cost Centre Person'},
-    {key:'expectedSource', label:'Expected Ownership Source'},
-    {key:'actualCostCentre', label:'Actual Cost Centre Person'},
-    {key:'reason', label:'Match Reason'},
-    {key:'shouldBeMappedTo', label:'Should Be Mapped To'},
-    {key:'action', label:'Recommended Action', wrap:true},
   ];
   const filterDefs = [
     {key:'date', label:'Duration', type:'daterange'},
-    {key:'crm', label:'CRM'},
-    {key:'project', label:'Project BPL'},
-    {key:'projectQuality', label:'Project Name Quality'},
-    {key:'source', label:'Source/Sub-source'},
-    {key:'agency', label:'Agency Name'},
     {key:'salesHead', label:'Sales Head'},
-    {key:'expectedCostCentre', label:'Cost Centre Person'},
-    {key:'expectedUserName', label:'Team Member'},
-    {key:'expectedSource', label:'Expected Ownership Source'},
-    {key:'actualCostCentre', label:'Actual Cost Centre Person'},
+    {key:'project', label:'Project BPL'},
+    {key:'source', label:'Source/Sub-source'},
+    {key:'expectedUserName', label:'Expected Team Member'},
+    {key:'actualUserName', label:'Actual Team Member'},
     {key:'result', label:'Mapping Result'},
   ];
 
@@ -2819,10 +2840,12 @@ M3._checkReady = function(){
 const M3_AGENCY_FIELDS = [
   {key:'project', label:'Project', required:true},
   {key:'source', label:'Source', required:false},
+  {key:'date', label:'Date', required:false},
 ];
 const M3_CRM_FIELDS = [
   {key:'project', label:'Project', required:true},
   {key:'source', label:'Source', required:false},
+  {key:'date', label:'Date', required:false},
 ];
 
 /* Fields for the "agency sends a per-project summary" mode (e.g. a City-wise
@@ -3042,13 +3065,14 @@ M3.generateLeadLevel = async function(){
     if(Utils.isBlank(project)) return;
     const source = useSource ? (Utils.resolveSource(Utils.val(row, cMap.source)).canonical || Utils.val(row, cMap.source)) : '';
     const key = source+'||'+project;
-    if(!crmGroups[key]) crmGroups[key] = {source, project, received:0};
+    if(!crmGroups[key]) crmGroups[key] = {source, project, received:0, dates:[]};
     crmGroups[key].received++;
+    if(cMap.date){ const d = Utils.toDateSafe(Utils.val(row, cMap.date)); if(d) crmGroups[key].dates.push(d); }
   });
   const crmBySource = {};
   Object.values(crmGroups).forEach(g=>{
     if(!crmBySource[g.source]) crmBySource[g.source] = [];
-    crmBySource[g.source].push({project:g.project, received:g.received});
+    crmBySource[g.source].push({project:g.project, received:g.received, dates:g.dates});
   });
 
   // Agency side: count per (source, project), matching each project name against
@@ -3060,14 +3084,18 @@ M3.generateLeadLevel = async function(){
     if(Utils.isBlank(project)) return;
     const source = useSource ? (Utils.resolveSource(Utils.val(row, aMap.source)).canonical || Utils.val(row, aMap.source)) : '';
     const key = source+'||'+project;
-    if(!agencyGroups[key]) agencyGroups[key] = {source, project, generated:0};
+    if(!agencyGroups[key]) agencyGroups[key] = {source, project, generated:0, dates:[]};
     agencyGroups[key].generated++;
+    if(aMap.date){ const d = Utils.toDateSafe(Utils.val(row, aMap.date)); if(d) agencyGroups[key].dates.push(d); }
   });
 
+  const useDate = !!(aMap.date || cMap.date);
   const out = [];
-  Object.values(agencyGroups).forEach(g=>{
+  const agencyMatches = {}; // key -> match result, reused below for the daily breakdown
+  Object.entries(agencyGroups).forEach(([key, g])=>{
     const candidates = crmBySource[g.source] || [];
     const match = M3.matchProject(g.project, candidates);
+    agencyMatches[key] = match;
     const received = match.matches.reduce((s,m)=>s+m.received, 0);
     const matchedNames = match.matches.map(m=>m.project).join(', ');
     const gap = g.generated - received;
@@ -3079,17 +3107,154 @@ M3.generateLeadLevel = async function(){
     else if(gap > 0) status = 'UNEXPLAINED GAP';
     else status = 'REVIEW REQUIRED';
 
+    let month = '', duration = '';
+    if(useDate){
+      const allDates = g.dates.concat(...match.matches.map(m=>m.dates||[])).sort((a,b)=>a-b);
+      if(allDates.length){
+        const first = allDates[0], last = allDates[allDates.length-1];
+        month = (first.getMonth()===last.getMonth() && first.getFullYear()===last.getFullYear())
+          ? Utils.MONTH_ABBR[first.getMonth()]+'-'+String(first.getFullYear()).slice(-2)
+          : Utils.MONTH_ABBR[first.getMonth()]+'-'+String(first.getFullYear()).slice(-2)+' to '+Utils.MONTH_ABBR[last.getMonth()]+'-'+String(last.getFullYear()).slice(-2);
+        duration = Utils.formatDateShort(first) + ' to ' + Utils.formatDateShort(last);
+      }
+    }
+
     out.push({
       source: g.source || '(not mapped)', project: g.project, matchedCrmProject: matchedNames || '(none found)', matchType: match.type,
-      generated: g.generated, received, gap, status
+      generated: g.generated, received, gap, status, month, duration
     });
   });
 
   out.sort((a,b)=> Math.abs(b.gap) - Math.abs(a.gap));
-  M3.buildSimpleReport(out, useSource);
+  M3.buildAgencyGenerationSummary(aMap);
+  M3.buildDailyGapReport(aMap, cMap, agencyGroups, crmGroups, agencyMatches, useSource);
+  M3.buildSimpleReport(out, useSource, useDate);
 };
 
-M3.buildSimpleReport = function(rows, useSource){
+/* Standalone breakdown of the agency's OWN raw data — Date / Project / Source /
+   Leads Generated — independent of the CRM comparison. Shows exactly what the
+   agency claims to have delivered, day by day, project by project, source by
+   source. Only builds if a Date column was mapped on the agency side. */
+M3.buildAgencyGenerationSummary = function(aMap){
+  const card = document.getElementById('m3-agency-gen-card');
+  if(!aMap.date){ if(card) card.style.display = 'none'; return; }
+
+  const byKey = {};
+  M3.agency.rows.forEach(row=>{
+    const project = Utils.val(row, aMap.project);
+    if(Utils.isBlank(project)) return;
+    const source = aMap.source ? (Utils.resolveSource(Utils.val(row, aMap.source)).canonical || Utils.val(row, aMap.source)) : '(not mapped)';
+    const dateRaw = Utils.val(row, aMap.date);
+    const d = Utils.toDateSafe(dateRaw);
+    const dateLabel = d ? Utils.formatDateShort(d) : (Utils.isBlank(dateRaw) ? '(no date)' : String(dateRaw));
+    const key = dateLabel+'||'+project+'||'+source;
+    if(!byKey[key]) byKey[key] = {date: dateLabel, sortDate: d ? d.getTime() : -1, project, source, count:0};
+    byKey[key].count++;
+  });
+  const rows = Object.values(byKey).sort((a,b)=> b.sortDate - a.sortDate || b.count - a.count);
+  if(!rows.length){ if(card) card.style.display = 'none'; return; }
+
+  if(card) card.style.display = 'block';
+  const columns = [
+    {key:'date', label:'Date'},
+    {key:'project', label:'Project'},
+    {key:'source', label:'Source'},
+    {key:'count', label:'Leads Generated'},
+  ];
+  const filterDefs = [
+    {key:'date', label:'Date'},
+    {key:'project', label:'Project'},
+    {key:'source', label:'Source'},
+  ];
+  new DataTable({
+    prefix:'m3agen', columns:columns, rows:rows, filterDefs:filterDefs,
+    filename:'agency_lead_generation_summary.xlsx'
+  });
+};
+
+/* Day-by-day gap report: for every date the agency or CRM has activity, show
+   both sides' counts and the difference — same project-matching already
+   established for the aggregate report, just broken out per day instead of
+   summed across the whole period. Needs Date mapped on BOTH sides. */
+M3.buildDailyGapReport = function(aMap, cMap, agencyGroups, crmGroups, agencyMatches, useSource){
+  const card = document.getElementById('m3-daily-gap-card');
+  if(!aMap.date || !cMap.date){ if(card) card.style.display = 'none'; return; }
+
+  const dateLabel = d => d ? Utils.formatDateShort(d) : '(no date)';
+
+  // Per-date counts, keyed by source||project||dateLabel, built straight from the raw rows
+  const agencyDateCounts = {};
+  M3.agency.rows.forEach(row=>{
+    const project = Utils.val(row, aMap.project);
+    if(Utils.isBlank(project)) return;
+    const source = useSource ? (Utils.resolveSource(Utils.val(row, aMap.source)).canonical || Utils.val(row, aMap.source)) : '';
+    const d = Utils.toDateSafe(Utils.val(row, aMap.date));
+    const key = source+'||'+project+'||'+dateLabel(d);
+    agencyDateCounts[key] = (agencyDateCounts[key]||0) + 1;
+  });
+  const crmDateCounts = {};
+  M3.crm.rows.forEach(row=>{
+    const project = Utils.val(row, cMap.project);
+    if(Utils.isBlank(project)) return;
+    const source = useSource ? (Utils.resolveSource(Utils.val(row, cMap.source)).canonical || Utils.val(row, cMap.source)) : '';
+    const d = Utils.toDateSafe(Utils.val(row, cMap.date));
+    const key = source+'||'+project+'||'+dateLabel(d);
+    crmDateCounts[key] = (crmDateCounts[key]||0) + 1;
+  });
+
+  const dailyRows = [];
+  Object.entries(agencyGroups).forEach(([key, g])=>{
+    const match = agencyMatches[key];
+    const matchedProjects = match.matches.map(m=>m.project);
+
+    // Every date this project+source appears on, from either side
+    const allDates = new Set();
+    g.dates.forEach(d=> allDates.add(dateLabel(d)));
+    matchedProjects.forEach(mp=>{
+      const crmG = crmGroups[g.source+'||'+mp];
+      if(crmG) crmG.dates.forEach(d=> allDates.add(dateLabel(d)));
+    });
+
+    allDates.forEach(dl=>{
+      const agencyCount = agencyDateCounts[g.source+'||'+g.project+'||'+dl] || 0;
+      let crmCount = 0;
+      matchedProjects.forEach(mp=>{ crmCount += crmDateCounts[g.source+'||'+mp+'||'+dl] || 0; });
+      dailyRows.push({
+        date: dl, source: g.source || '(not mapped)', project: g.project,
+        matchedCrmProject: matchedProjects.join(', ') || '(none found)',
+        agencyCount, crmCount, diff: agencyCount - crmCount
+      });
+    });
+  });
+
+  if(!dailyRows.length){ if(card) card.style.display = 'none'; return; }
+  dailyRows.sort((a,b)=> (a.date < b.date ? 1 : a.date > b.date ? -1 : Math.abs(b.diff) - Math.abs(a.diff)));
+
+  if(card) card.style.display = 'block';
+  const columns = [
+    {key:'date', label:'Date'},
+    {key:'project', label:'Project (as Agency wrote it)', wrap:true},
+    {key:'matchedCrmProject', label:'Matched CRM Project', wrap:true},
+    {key:'agencyCount', label:'Lead Claimed from Agency'},
+    {key:'crmCount', label:'Lead Claimed from CRM'},
+    {key:'diff', label:'Difference'},
+  ];
+  const filterDefs = [
+    {key:'date', label:'Date'},
+    {key:'project', label:'Project'},
+  ];
+  if(useSource){
+    columns.splice(1, 0, {key:'source', label:'Source'});
+    filterDefs.push({key:'source', label:'Source'});
+  }
+
+  new DataTable({
+    prefix:'m3daily', columns:columns, rows:dailyRows, filterDefs:filterDefs,
+    filename:'daily_agency_crm_gap.xlsx'
+  });
+};
+
+M3.buildSimpleReport = function(rows, useSource, useDate){
   document.getElementById('m3-report').style.display = 'block';
   document.getElementById('m3-match-summary-card').style.display = 'block';
   const logCard = document.getElementById('m3-source-log-card');
@@ -3125,6 +3290,11 @@ M3.buildSimpleReport = function(rows, useSource){
   const filterDefs = [
     {key:'status', label:'Verdict'},
   ];
+  if(useDate){
+    columns.push({key:'month', label:'Month'});
+    columns.push({key:'duration', label:'Date Range'});
+    filterDefs.push({key:'month', label:'Month'});
+  }
   if(useSource){
     columns.unshift({key:'source', label:'Source'});
     filterDefs.unshift({key:'source', label:'Source'});
