@@ -1139,8 +1139,15 @@ Utils.extractCityFromBranch = function(branchText){
 Utils.classifyStatus = function(rawStatus){
   const s = Utils.normLoose(rawStatus);
   if(!s) return 'other';
-  if(/^new$/.test(s) || /\bnew lead\b/.test(s)) return 'new';
+  // "(Dump)" variants are a distinct outcome, not a real New/Not Connected lead —
+  // excluded even though they contain those words (e.g. "Not Connected (Dump)").
+  if(/dump/.test(s)) return 'other';
+  // Check Not Connected first, in case a status combines both words (e.g. "New - Not Connected")
   if(/not\s*connected/.test(s)) return 'not_connected';
+  // Whole-word match, not exact-match — real CRM values are rarely just "new" alone
+  // (e.g. "New Enquiry", "1. New", "New - Untouched" should all still count).
+  // Word boundary avoids false positives like "Renewed".
+  if(/\bnew\b/.test(s)) return 'new';
   return 'other';
 };
 
@@ -1148,7 +1155,7 @@ Utils.classifyStatus = function(rawStatus){
 Utils.COLUMN_ALIASES = {
   project:      ['Project Name','Project','ProjectName','Property','Opportunity Project','Opportunity Name','Project Name (BPL)'],
   source:       ['Sub Source','Sub-source','Subsource','Opportunity Sub Source','Source/Sub-source','CRM Source/Sub-source','Source','Lead Source','Opportunity Source','Source Name'],
-  costCentre:   ['Cost Centre Person Name','Cost Center Person Name','Cost Centre Person','Cost Center Person','CRM User','Handled By','Enquiry Owner','Lead Owner','Owner','Assigned To','Sales Person','Employee Name','Cost Centre','Cost Center','Email','Owner Email'],
+  costCentre:   ['Cost Centre Person Name','Cost Center Person Name','Cost Centre Person','Cost Center Person','CRM User','Enquiry Owner','Handled By','Lead Owner','Owner','Assigned To','Sales Person','Employee Name','Cost Centre','Cost Center','Email','Owner Email'],
   salesHead:    ['Sales Head','SalesHead','Reporting Manager','Manager','Team Head','Team Lead'],
   status:       ['Current Status','Lead Status','Lead Stage','Stage','Status','Disposition','Opportunity Status'],
   date:         ['Date','Created Date','Created On','Lead Date','Enquiry Date','Opportunity Date'],
