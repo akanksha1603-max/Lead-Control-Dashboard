@@ -291,7 +291,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       <div class="view-head">
         <div>
           <h1>CRM Mapping Mismatch</h1>
-          <p>Verify that CRM + Project (BPL) + Source/Sub-source is mapped to the correct Sales Head and Cost Centre Person.</p>
+          <p>Verify that CRM + Project (BPL) + Source/Sub-source is mapped to the correct Sales Head.</p>
         </div>
       </div>
 
@@ -300,7 +300,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         <div class="upload-grid">
           <div class="upload-box" id="m1-box-ours">
             <div class="u-title">Mapping From Our Side</div>
-            <div class="u-hint">Expected: CRM, Project Name (BPL), Source/Sub-source, Agency Name, Sales Head, Cost Centre Person Name</div>
+            <div class="u-hint">Expected: Mapping Date, Project Name (BPL), Sales Head, Team Member, Source</div>
             <input type="file" id="m1-file-ours" accept=".xlsx,.xls,.csv,.pdf">
             <div class="u-status empty" id="m1-status-ours">No file uploaded</div>
           </div>
@@ -574,8 +574,8 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         </details>
         <div class="mail-grid">
           <div>
-            <div class="field" id="f-project"><label>Project Name (BPL) <span class="req-star">*</span></label><input id="m4-project"></div>
-            <div class="field" id="f-source"><label>Source <span class="req-star">*</span></label><input id="m4-source"></div>
+            <div class="field" id="f-project"><label>Project Name (BPL)</label><input id="m4-project"></div>
+            <div class="field" id="f-source"><label>Source</label><input id="m4-source"></div>
             <div class="field" id="f-head"><label>Sales Head (Map To) <span class="req-star">*</span></label><input id="m4-head"></div>
           </div>
           <div>
@@ -2232,19 +2232,18 @@ M1._checkReady = function(){
 
 const M1_OURS_FIELDS = [
   {key:'crm', label:'CRM (leave unmapped to auto-identify by location)', required:false},
+  {key:'date', label:'Mapping Date', required:false},
   {key:'project', label:'Project Name (BPL)', required:true},
+  {key:'salesHead', label:'Sales Head', required:true},
+  {key:'userName', label:'Sales Head\'s Team Member(s)', required:false},
   {key:'source', label:'Source / Sub-source', required:true},
-  {key:'salesHead', label:'Sales Head / Team Lead', required:false},
-  {key:'costCentre', label:'Cost Centre Person Name / User', required:true},
-  {key:'userName', label:'Team Member (CRM login/handler name, if different from Cost Centre Person)', required:false},
 ];
 const M1_CRM_FIELDS = [
   {key:'crm', label:'CRM (leave unmapped to auto-identify by location)', required:false},
   {key:'project', label:'Project Name (BPL)', required:true},
   {key:'source', label:'Source / Sub-source', required:true},
-  {key:'salesHead', label:'Sales Head', required:false},
-  {key:'costCentre', label:'Cost Centre Person Name (actual owner)', required:true},
-  {key:'userName', label:'Team Member (CRM login/handler name, if different from Cost Centre Person)', required:false},
+  {key:'salesHead', label:'Sales Head (actual owner)', required:true},
+  {key:'userName', label:'Sales Head\'s Team Member(s)', required:false},
   {key:'location', label:'Location / Region / Branch (optional, helps identify CRM system)', required:false},
   {key:'date', label:'Date (used for Duration filter)', required:false},
 ];
@@ -2269,7 +2268,7 @@ M1.generate = async function(){
   M1.oursMap = oursMap; M1.crmMap = crmMap;
 
   // Build CRM index keyed by CRM|BPL(normalized)|Source(canonical)
-  const crmIndex = {}; // key -> array of {costCentre, salesHead, projectRaw}
+  const crmIndex = {}; // key -> array of {salesHead, userName, projectRaw}
   const crmBySourceCrm = {}; // "crm|sourceCanonical" -> [{bplNorm, ...}] for fuzzy search
   let crmContaminatedCount = 0;
   M1.crm.rows.forEach(row=>{
@@ -2279,33 +2278,31 @@ M1.generate = async function(){
     const crm = Utils.val(row, crmMap.crm) || Utils.inferCrm(locationText) || Utils.inferCrm(project) || '';
     const sourceRaw = Utils.val(row, crmMap.source);
     const resolved = Utils.resolveSource(sourceRaw);
-    const costCentre = Utils.prettifyPersonName(Utils.val(row, crmMap.costCentre));
     const salesHead = Utils.prettifyPersonName(Utils.val(row, crmMap.salesHead));
     const userName = Utils.splitAndPrettifyNames(Utils.val(row, crmMap.userName));
     const date = Utils.val(row, crmMap.date);
     const key = Utils.normKey(crm) + '|' + Utils.normLoose(project) + '|' + Utils.normKey(resolved.canonical);
     if(!crmIndex[key]) crmIndex[key] = [];
-    crmIndex[key].push({costCentre, salesHead, userName, project, resolved, date});
+    crmIndex[key].push({salesHead, userName, project, resolved, date});
     const bucketKey = Utils.normKey(crm)+'|'+Utils.normKey(resolved.canonical);
     if(!crmBySourceCrm[bucketKey]) crmBySourceCrm[bucketKey] = [];
-    crmBySourceCrm[bucketKey].push({project, costCentre, salesHead, userName, resolved, date});
+    crmBySourceCrm[bucketKey].push({project, salesHead, userName, resolved, date});
   });
 
   const out = M1.ours.rows.map(row=>{
-    const crm = Utils.val(row, oursMap.crm) || Utils.inferCrm(Utils.val(row, oursMap.project)) || '';
     const project = Utils.val(row, oursMap.project);
+    const crm = Utils.val(row, oursMap.crm) || Utils.inferCrm(project) || '';
+    const mappingDate = Utils.val(row, oursMap.date);
     const sourceRaw = Utils.val(row, oursMap.source);
-    const agency = Utils.val(row, oursMap.agency);
-    let salesHead = Utils.prettifyPersonName(Utils.val(row, oursMap.salesHead));
-    let expectedCostCentre = Utils.prettifyPersonName(Utils.val(row, oursMap.costCentre));
+    let expectedSalesHead = Utils.prettifyPersonName(Utils.val(row, oursMap.salesHead));
     const expectedUserName = Utils.splitAndPrettifyNames(Utils.val(row, oursMap.userName));
     const resolvedSource = Utils.resolveSource(sourceRaw);
     const contamination = Utils.detectProjectContamination(project);
 
     const base = {
-      crm, project, source: resolvedSource.canonical || sourceRaw, sourceCategory: resolvedSource.category,
-      agency, salesHead, expectedCostCentre, expectedUserName, expectedSource:'Mapping file',
-      actualCostCentre:'', actualUserName:'', actualSalesHead:'', date:'',
+      crm, project, mappingDate, source: resolvedSource.canonical || sourceRaw, sourceCategory: resolvedSource.category,
+      salesHead: expectedSalesHead, expectedUserName, expectedSource:'Mapping file',
+      actualSalesHead:'', actualUserName:'',
       projectQuality: contamination.contaminated ? 'Contaminated' : 'Clean',
       projectQualityDetail: contamination.matches.join('; '),
       result:'', reason:'', shouldBeMappedTo:'', action:''
@@ -2323,22 +2320,20 @@ M1.generate = async function(){
       return base;
     }
 
-    if(Utils.isBlank(expectedCostCentre)){
+    if(Utils.isBlank(expectedSalesHead)){
       const loc = Utils.resolveLocation(project);
       if(loc.single){
-        expectedCostCentre = loc.single.costCentre[0];
-        if(Utils.isBlank(salesHead) && loc.single.salesHead.length===1) salesHead = loc.single.salesHead[0];
-        base.expectedCostCentre = expectedCostCentre;
-        base.salesHead = salesHead;
+        expectedSalesHead = loc.single.salesHead[0];
+        base.salesHead = expectedSalesHead;
         base.expectedSource = `Location Master default (${loc.single.region})`;
       } else if(loc.candidates.length){
         base.result = 'UNABLE TO VALIDATE'; base.reason = 'Ownership Field Missing';
-        const names = Array.from(new Set(loc.candidates.flatMap(c=>c.costCentre))).join(', ');
-        base.action = `No expected Cost Centre Person on file, and "${loc.candidates.map(c=>c.region).join('/')}" has multiple possible owners (${names}) — assign manually.`;
+        const names = Array.from(new Set(loc.candidates.flatMap(c=>c.salesHead))).join(', ');
+        base.action = `No expected Sales Head on file, and "${loc.candidates.map(c=>c.region).join('/')}" has multiple possible owners (${names}) — assign manually.`;
         return base;
       } else {
         base.result = 'UNABLE TO VALIDATE'; base.reason = 'Ownership Field Missing';
-        base.action = 'Add the expected Cost Centre Person before this record can be validated.';
+        base.action = 'Add the expected Sales Head before this record can be validated.';
         return base;
       }
     }
@@ -2347,38 +2342,30 @@ M1.generate = async function(){
     const exact = crmIndex[key];
 
     if(exact && exact.length){
-      // pick most common actual cost centre person among matches
+      // pick most common actual sales head among matches
       const counts = {};
-      exact.forEach(e=>{ const k=Utils.normLoose(e.costCentre)||'(blank)'; counts[k]=(counts[k]||0)+1; });
+      exact.forEach(e=>{ const k=Utils.normLoose(e.salesHead)||'(blank)'; counts[k]=(counts[k]||0)+1; });
       const bestKey = Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0];
-      const bestRecord = exact.find(e=>(Utils.normLoose(e.costCentre)||'(blank)')===bestKey);
-      const actualCostCentre = bestRecord.costCentre;
+      const bestRecord = exact.find(e=>(Utils.normLoose(e.salesHead)||'(blank)')===bestKey);
       const actualSalesHead = bestRecord.salesHead;
-      base.actualCostCentre = actualCostCentre;
       base.actualSalesHead = actualSalesHead;
       base.actualUserName = bestRecord.userName;
-      base.date = bestRecord.date;
 
-      if(Utils.isBlank(actualCostCentre)){
+      if(Utils.isBlank(actualSalesHead)){
         base.result = 'UNABLE TO VALIDATE'; base.reason = 'Ownership Field Missing';
-        base.action = 'CRM record has no owner/cost centre person recorded — check CRM data.';
+        base.action = 'CRM record has no Sales Head recorded — check CRM data.';
         return base;
       }
 
-      const costMatches = Utils.normLoose(actualCostCentre) === Utils.normLoose(expectedCostCentre);
-      const headMatches = Utils.isBlank(salesHead) || Utils.isBlank(actualSalesHead) || (Utils.normLoose(salesHead) === Utils.normLoose(actualSalesHead));
+      const salesHeadMatches = Utils.normLoose(actualSalesHead) === Utils.normLoose(expectedSalesHead);
 
-      if(costMatches){
+      if(salesHeadMatches){
         base.result = 'CORRECT'; base.reason = 'Expected ownership matches CRM';
         base.action = 'No action needed.';
-      } else if(!headMatches){
-        base.result = 'WRONG MAPPING'; base.reason = 'Sales Head Mismatch';
-        base.shouldBeMappedTo = expectedCostCentre;
-        base.action = `Update CRM mapping — Sales Head should be ${salesHead || '(see mapping master)'}.`;
       } else {
-        base.result = 'WRONG MAPPING'; base.reason = 'Cost Centre Person Mismatch';
-        base.shouldBeMappedTo = expectedCostCentre;
-        base.action = `Update CRM mapping — Cost Centre Person should be ${expectedCostCentre}.`;
+        base.result = 'WRONG MAPPING'; base.reason = 'Sales Head Mismatch';
+        base.shouldBeMappedTo = expectedSalesHead;
+        base.action = `Update CRM mapping — Sales Head should be ${expectedSalesHead}.`;
       }
       return base;
     }
@@ -2393,10 +2380,8 @@ M1.generate = async function(){
         if(score > bestScore){ bestScore = score; best = b; }
       });
       if(best && bestScore >= Utils.Settings.fuzzyThreshold){
-        base.actualCostCentre = best.costCentre;
         base.actualSalesHead = best.salesHead;
         base.actualUserName = best.userName;
-        base.date = best.date;
         base.result = 'POSSIBLE MATCH'; base.reason = 'Possible BPL Match';
         base.shouldBeMappedTo = best.project;
         base.action = `Verify project name spelling — closest CRM match is "${best.project}".`;
@@ -2441,15 +2426,16 @@ M1.buildReport = function(rows, crmContaminatedCount){
   }
 
   const columns = [
-    {key:'salesHead', label:'Sales Head'},
+    {key:'mappingDate', label:'Mapping Date'},
     {key:'project', label:'Project Name (BPL)', wrap:true},
-    {key:'source', label:'Source/Sub-source'},
+    {key:'salesHead', label:'Sales Head'},
     {key:'expectedUserName', label:'Expected Team Member'},
     {key:'actualUserName', label:'Actual Team Member'},
+    {key:'source', label:'Source/Sub-source'},
     {key:'result', label:'Mapping Result', pill:true},
   ];
   const filterDefs = [
-    {key:'date', label:'Duration', type:'daterange'},
+    {key:'mappingDate', label:'Mapping Date', type:'daterange'},
     {key:'salesHead', label:'Sales Head'},
     {key:'project', label:'Project BPL'},
     {key:'source', label:'Source/Sub-source'},
@@ -3408,35 +3394,75 @@ M4.parseNote = function(raw){
 };
 
 /* Upload path: read the file (reusing the same reader used everywhere else in
-   this dashboard, so .xlsx/.xls/.csv/.pdf all work). If it has recognizable
-   columns (Project/Source/Sales Head/Team Member — the same alias matching
-   used across every module), use the first data row directly. Otherwise
-   flatten everything to text and run it through the exact same informal-note
-   parser as pasting text, rather than a second, different heuristic. */
+   this dashboard, so .xlsx/.xls/.csv/.pdf all work). Three possible shapes:
+   1. A bulk registry — one row per PERSON, with several sources/projects
+      comma-joined in a single cell (LeadSquared's own export format looks
+      exactly like this). Detected by a project/source cell containing a
+      comma. Imports every row straight into the LSQ Mapping Registry.
+   2. A single mapping table — recognizable Project/Source/Sales Head/Team
+      Member columns, one row = one mapping. Uses row 1 to fill the mail.
+   3. Freeform text/PDF with no real columns — flattened and run through the
+      same informal-note parser as pasting text. */
 M4.handleUploadFile = async function(file){
   const statusEl = document.getElementById('m4-upload-status');
   statusEl.textContent = 'Reading ' + file.name + '…';
   try{
     const result = await Utils.readFileAsAoaSheets(file);
+
+    // A helper to turn one sheet's raw AOA into {headers, rows}
+    const parseSheet = (aoa)=>{
+      const hdrIdx = Utils.detectHeaderRow(aoa);
+      const headers = (aoa[hdrIdx]||[]).map((h,i)=> Utils.norm(h) || ('Column '+(i+1)));
+      const rows = [];
+      for(let r=hdrIdx+1; r<aoa.length; r++){
+        const arr = aoa[r];
+        if(!arr || !arr.some(c=>Utils.norm(c)!=='')) continue;
+        const obj = {}; headers.forEach((h,i)=>{ obj[h] = arr[i]!==undefined ? arr[i] : ''; });
+        rows.push(obj);
+      }
+      return {headers, rows};
+    };
+    const findEmailCol = (headers, rows)=>{
+      let col = headers.find(h=>/email/i.test(h));
+      if(!col) col = headers.find(h => rows.slice(0,3).some(r => /@/.test(String(r[h]||''))));
+      return col;
+    };
+    const pickConsolidated = (headers, rows, regex)=>{
+      const candidates = headers.filter(h=>regex.test(h));
+      if(!candidates.length) return null;
+      return candidates.find(h => rows.some(r=>/,/.test(String(r[h]||'')))) || candidates[0];
+    };
+
+    // Check EVERY sheet for the bulk-registry signature first — a sheet with
+    // this shape is what the person means even if it's not the biggest sheet
+    // in the file (e.g. a big raw-lead Sheet1 next to a small summary Sheet2).
+    for(const sn of result.sheetNames){
+      const {headers, rows} = parseSheet(result.aoaBySheet[sn]);
+      if(!rows.length) continue;
+      const emailCol = findEmailCol(headers, rows);
+      const projectCol = pickConsolidated(headers, rows, /project/i);
+      const sourceCol = pickConsolidated(headers, rows, /source/i);
+      const looksLikeBulkRegistry = emailCol && projectCol &&
+        rows.slice(0,3).some(r => /,/.test(String(r[projectCol]||'')) || /,/.test(String(r[sourceCol]||'')));
+      if(looksLikeBulkRegistry){
+        M4.bulkImportLsqRegistry(rows, emailCol, sourceCol, projectCol, file.name, sn);
+        return;
+      }
+    }
+
+    // No sheet matched the bulk-registry shape — fall back to the single
+    // largest sheet for the "one row = one mapping" or freeform-text paths.
     let bestSheet = result.sheetNames[0], bestScore = -1;
     result.sheetNames.forEach(sn=>{
       const nonBlank = result.aoaBySheet[sn].filter(r=>r.some(c=>Utils.norm(c)!=='')).length;
       if(nonBlank > bestScore){ bestScore = nonBlank; bestSheet = sn; }
     });
     const aoa = result.aoaBySheet[bestSheet];
-    const hdrIdx = Utils.detectHeaderRow(aoa);
-    const headers = (aoa[hdrIdx]||[]).map((h,i)=> Utils.norm(h) || ('Column '+(i+1)));
-    const rows = [];
-    for(let r=hdrIdx+1; r<aoa.length; r++){
-      const arr = aoa[r];
-      if(!arr || !arr.some(c=>Utils.norm(c)!=='')) continue;
-      const obj = {}; headers.forEach((h,i)=>{ obj[h] = arr[i]!==undefined ? arr[i] : ''; });
-      rows.push(obj);
-    }
+    const {headers, rows} = parseSheet(aoa);
 
     if(rows.length){
+      const emailCol = findEmailCol(headers, rows);
       const detected = Utils.detectColumns(headers, ['project','source','salesHead','costCentre','userName'], rows);
-      const emailCol = headers.find(h=>/email/i.test(h));
       if(detected.project){
         const row = rows[0];
         M4.project = Utils.val(row, detected.project);
@@ -3480,6 +3506,47 @@ M4.handleUploadFile = async function(file){
   }catch(err){
     statusEl.textContent = `✕ Could not read ${file.name} — try pasting the text instead, or check the file format.`;
   }
+};
+
+/* Imports every row of a bulk registry file straight into the LeadSquared
+   Mapping Registry — merging with (not replacing) whatever's already there,
+   same dedup rule as saving one mapping at a time: a source/project already
+   on file for that email doesn't get added twice. Switches the mail generator
+   to the LSQ template afterward and shows the resulting attachment, since
+   that's the whole point of importing this data. */
+M4.bulkImportLsqRegistry = function(rows, emailCol, sourceCol, projectCol, fileName, sheetName){
+  const statusEl = document.getElementById('m4-upload-status');
+  const registry = Utils.Settings.lsqMappingRegistry || [];
+  let peopleImported = 0, sourcesAdded = 0, projectsAdded = 0;
+
+  rows.forEach(row=>{
+    const email = Utils.val(row, emailCol);
+    if(Utils.isBlank(email) || !email.includes('@')) return;
+    const sourcesRaw = sourceCol ? Utils.val(row, sourceCol) : '';
+    const projectsRaw = projectCol ? Utils.val(row, projectCol) : '';
+    // Sources split on comma OR " & " (some rows list the last item as "X & Y"
+    // instead of ", Y") — safe for short source codes, unlike project names
+    // which can legitimately contain "&" (e.g. "L&T Crestoria").
+    const sources = sourcesRaw.split(/,|\s+&\s+/).map(s=>s.trim()).filter(Boolean);
+    const projects = projectsRaw.split(',').map(p=>p.trim()).filter(Boolean).map(Utils.titleCase);
+    if(!sources.length && !projects.length) return;
+
+    let entry = registry.find(e=>e.email.toLowerCase()===email.toLowerCase());
+    if(!entry){ entry = {email, sources:[], projects:[]}; registry.push(entry); peopleImported++; }
+    sources.forEach(s=>{ if(!entry.sources.some(x=>x.toLowerCase()===s.toLowerCase())){ entry.sources.push(s); sourcesAdded++; } });
+    projects.forEach(p=>{ if(!entry.projects.some(x=>x.toLowerCase()===p.toLowerCase())){ entry.projects.push(p); projectsAdded++; } });
+  });
+
+  Utils.Settings.lsqMappingRegistry = registry;
+  Utils.saveSettings();
+
+  // Switch to an LSQ template so the imported attachment is immediately visible
+  const lsqTemplate = M4.allTemplates().find(t=>t.kind==='lsq');
+  if(lsqTemplate) M4.selectedTemplateId = lsqTemplate.id;
+
+  statusEl.textContent = `✓ Imported "${sheetName}" from ${fileName} — ${peopleImported} new/${registry.length} total people in the registry, ${sourcesAdded} source and ${projectsAdded} project entries added. This was a bulk registry file (multiple sources/projects per person), so it was merged into the LeadSquared Mapping Registry rather than filling in one mail — see the attachment preview below.`;
+  M4.renderMail();
+  document.getElementById('m4-attach-wrap').scrollIntoView({behavior:'smooth', block:'start'});
 };
 
 document.addEventListener('DOMContentLoaded', function(){
@@ -3534,6 +3601,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
   document.getElementById('m4-template-select').addEventListener('change', function(){
     M4.selectedTemplateId = this.value;
+    M4.updateFieldWarnings();
     M4.renderMail();
   });
 
@@ -3618,11 +3686,14 @@ M4.renderFields = function(){
 };
 
 M4.updateFieldWarnings = function(){
-  document.getElementById('f-project').classList.toggle('warn', Utils.isBlank(M4.project));
-  document.getElementById('f-source').classList.toggle('warn', Utils.isBlank(M4.source));
+  // Only Sales Head is compulsory now — Project (BPL) and Source are informational,
+  // not required, since the actual mapping detail can come from an uploaded file
+  // or the LeadSquared attachment/registry rather than these two fields.
+  document.getElementById('f-project').classList.remove('warn');
+  document.getElementById('f-source').classList.remove('warn');
   document.getElementById('f-head').classList.toggle('warn', Utils.isBlank(M4.salesHead));
-  M4._setFlag('f-project', Utils.isBlank(M4.project), 'Enter the project name (BPL format).');
-  M4._setFlag('f-source', Utils.isBlank(M4.source), 'Source not recognized in the source master — enter the official source, or add it to the master.');
+  M4._setFlag('f-project', false);
+  M4._setFlag('f-source', false);
   if(!Utils.isBlank(M4.salesHead) && M4.locationSuggestion){
     M4._setFlag('f-head', true, M4.locationSuggestion);
     document.getElementById('f-head').classList.add('warn');
@@ -3651,12 +3722,13 @@ M4.currentTemplate = function(){
   const list = M4.allTemplates();
   return list.find(t=>t.id===M4.selectedTemplateId) || list[0];
 };
-M4.applyTemplate = function(str){
+M4.applyTemplate = function(str, isSubject){
   const team = M4.cleanTeam();
+  const noTeam = team.length === 0;
   // Normalized regardless of how it was typed — direct field entry and the note
   // parser now both produce the same consistent Title Case output in the mail,
   // no matter whether the person typed ALL CAPS, all lowercase, or mixed case.
-  const teamMembersList = team.length ? team.map((m,i)=>`${i+1}. ${Utils.titleCase(m.name || m.email)}`).join('\n') : '1. [Add team member]';
+  const teamMembersList = team.length ? team.map((m,i)=>`${i+1}. ${Utils.titleCase(m.name || m.email)}`).join('\n') : '';
   // Source: resolve through the Source Master for its official canonical name/casing
   // when it matches something known; otherwise fall back to Title Case of whatever
   // was typed. resolveSource's own fallback echoes back the raw input as "canonical"
@@ -3664,18 +3736,44 @@ M4.applyTemplate = function(str){
   // empty — it never is.
   const sourceInfo = M4.source ? Utils.resolveSource(M4.source) : null;
   const resolvedSource = sourceInfo && !sourceInfo.unmapped ? sourceInfo.canonical : (M4.source ? Utils.titleCase(M4.source) : '');
+
+  const blank = {project: Utils.isBlank(M4.project), source: Utils.isBlank(M4.source)};
   const vars = {
-    project: M4.project ? Utils.titleCase(M4.project) : '[Project BPL]',
-    source: resolvedSource || '[Source]',
+    project: blank.project ? '[Project BPL]' : Utils.titleCase(M4.project),
+    source: blank.source ? '[Source]' : resolvedSource,
     salesHead: M4.salesHead ? Utils.titleCase(M4.salesHead) : '[Sales Head]',
     teamMembersList
   };
+
   let out = str || '';
+  // Project/Source/Team Members aren't required for LeadSquared mail (the
+  // attachment/uploaded file covers them instead), so leaving any of them blank
+  // shouldn't leave a visible "[Project BPL]" or empty "Team Members" section in
+  // a sent mail — drop the segment/line(s) that reference the blank field.
+  if(isSubject){
+    out = out.split(' - ').filter(seg=>
+      !((blank.project && seg.includes('{{project}}')) || (blank.source && seg.includes('{{source}}')))
+    ).join(' - ');
+  } else {
+    const lines = out.split('\n');
+    const filtered = [];
+    for(let i=0;i<lines.length;i++){
+      const line = lines[i];
+      if(blank.project && line.includes('{{project}}')) continue;
+      if(blank.source && line.includes('{{source}}')) continue;
+      if(noTeam && line.includes('{{teamMembersList}}')) continue;
+      // Drop a "Team Members" heading line too, but only when it's immediately
+      // followed by the (now-empty) team list placeholder.
+      if(noTeam && /^team members?:?$/i.test(line.trim()) && lines[i+1] && lines[i+1].includes('{{teamMembersList}}')) continue;
+      filtered.push(line);
+    }
+    out = filtered.join('\n').replace(/\n{3,}/g, '\n\n');
+  }
   Object.keys(vars).forEach(k=>{ out = out.split('{{'+k+'}}').join(vars[k]); });
   return out;
 };
-M4.subject = function(){ const t = M4.currentTemplate(); return M4.applyTemplate(t && t.subject); };
-M4.body = function(){ const t = M4.currentTemplate(); return M4.applyTemplate(t && t.body); };
+M4.subject = function(){ const t = M4.currentTemplate(); return M4.applyTemplate(t && t.subject, true); };
+M4.body = function(){ const t = M4.currentTemplate(); return M4.applyTemplate(t && t.body, false); };
 
 /* LeadSquared's own attachment format isn't "one row per person for this one
    mail" — it's one row per person's EMAIL, listing every source and project
