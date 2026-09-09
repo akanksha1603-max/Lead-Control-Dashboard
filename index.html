@@ -144,6 +144,8 @@ button{font-family:inherit;}
 .kpi.tone-green .k-value{color:var(--green);}
 .kpi.tone-accent .k-value{color:var(--accent-dark);}
 .kpi.clickable{cursor:pointer;transition:box-shadow .15s,transform .15s;}
+.attach-table tr.clickable-row{cursor:pointer;}
+.attach-table tr.clickable-row:hover td{background:var(--accent-tint);}
 .kpi.clickable:hover{box-shadow:0 2px 10px rgba(0,0,0,.08);transform:translateY(-1px);border-color:var(--text-faint);}
 .kpi.clickable .k-label::after{content:" ↓";color:var(--text-faint);}
 
@@ -300,7 +302,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         <div class="upload-grid">
           <div class="upload-box" id="m1-box-ours">
             <div class="u-title">Mapping From Our Side</div>
-            <div class="u-hint">Expected: Mapping Date, Project Name (BPL), Sales Head, Team Member, Source</div>
+            <div class="u-hint">The mapping instructions you're checking against</div>
             <input type="file" id="m1-file-ours" accept=".xlsx,.xls,.csv,.pdf">
             <div class="u-status empty" id="m1-status-ours">No file uploaded</div>
           </div>
@@ -384,6 +386,21 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       </div>
 
       <div id="m2-report" style="display:none;">
+        <div class="card" id="m2-disposition-card" style="display:none;">
+          <h2>Wrong Disposition Check <small>Flags leads where the status doesn't match what the remark actually says happened</small></h2>
+          <div class="kpi-row" id="m2-disposition-headline"></div>
+          <h2 style="margin-top:18px;">Not Connected, but the remark shows contact was made</h2>
+          <div id="m2-disposition-nc-list"></div>
+          <div class="btn-row" style="margin-top:10px;"><button class="btn btn-sm" id="m2-dl-wrongnc">Download this list</button></div>
+          <h2 style="margin-top:18px;">Dumped after a site visit, without a strong reason</h2>
+          <div id="m2-disposition-dump-list"></div>
+          <div class="btn-row" style="margin-top:10px;"><button class="btn btn-sm" id="m2-dl-weakdump">Download this list</button></div>
+        </div>
+        <div class="card" id="m2-full-status-card" style="display:none;">
+          <h2>Full Status Breakdown <small>Every status in the file — New, Not Connected, Qualified, Dump, everything — not just the New/Not Connected subset this report normally keeps</small></h2>
+          <div class="kpi-row" id="m2-full-status-headline"></div>
+          <div id="m2-full-status-table" style="margin-top:12px;"></div>
+        </div>
         <div class="kpi-row" id="m2-kpis"></div>
         <div class="mini-note" style="margin:-4px 0 12px 2px;">Click a KPI to filter the detail table below. Raw CRM data → filtered to paid sources → this one summary.</div>
         <div class="card">
@@ -436,7 +453,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
 
       <div class="card">
         <h2>1 · Upload raw data</h2>
-        <div class="help-note">Report columns: Project, Lead Claimed from Agency, Lead Claimed from CRM, Difference. Multiple files per box are combined automatically.</div>
+        <div class="help-note">Multiple files per box are combined automatically.</div>
         <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:12px;">
           <input type="checkbox" id="m3-agency-summary-toggle">
           The agency file is already a per-project summary (has a pre-computed "Total Leads" count per project — like a City-wise Projects report) rather than raw one-row-per-lead data
@@ -919,21 +936,30 @@ Utils.STORAGE_KEY = 'lead_control_dashboard_settings_v1';
 Utils.DEFAULT_SOURCE_MASTER = [
   {raw:'IN HOUSE WHATSAPP', canonical:'IN HOUSE WHATSAPP', category:'WhatsApp campaign'},
   {raw:'Digital Marketing',  canonical:'XD',   category:'Meta ads'},
+  {raw:'Digital Marketing XD', canonical:'DMXD', category:'Meta ads'},
+  {raw:'DMXD',                canonical:'DMXD', category:'Meta ads'},
   {raw:'XD',                 canonical:'XD',   category:'Search ads'},
   {raw:'XDD',                canonical:'XD',   category:'Demand Gen'},
   {raw:'XDPL',                canonical:'XD',   category:'Platter'},
+  {raw:'XD & XDD',            canonical:'XD',   category:'Search ads'},
   {raw:'Mcube XD',            canonical:'Mcube XD', category:'IVR'},
   {raw:'GT',                  canonical:'GTF',  category:'Search Ads Google'},
+  {raw:'ND',                  canonical:'GTF',  category:'Demand Gen'},
   {raw:'New Discovery',       canonical:'GTF',  category:'Demand Gen'},
   {raw:'GTAW',                 canonical:'GTF',  category:'Video Ads'},
   {raw:'GTPL',                 canonical:'GTF',  category:'Platter'},
+  {raw:'GT & ND',              canonical:'GTF',  category:'Search Ads Google'},
+  {raw:'GT ,GTPL, ND & GTAW',  canonical:'GTF',  category:'Search Ads Google'},
   {raw:'Mcube GT',             canonical:'Mcube GT', category:'IVR'},
+  {raw:'MV',                   canonical:'Maven', category:'Meta ads'},
+  {raw:'Meta MV',              canonical:'Maven', category:'Meta ads'},
   {raw:'META-MV',              canonical:'Maven', category:'Meta ads'},
   {raw:'Mcube MV',             canonical:'Mcube MV', category:'IVR'},
   {raw:'AJN',                  canonical:'Aajneeti', category:'Meta ads'},
   {raw:'Mcube AJN',            canonical:'Mcube AJN', category:'IVR'},
   {raw:'99 Acres',             canonical:'99 Acres', category:'property portal'},
   {raw:'GRAF META',            canonical:'GRAFF', category:'Meta ads'},
+  {raw:'WOLF META',            canonical:'Wolf Media', category:'Meta'},
   {raw:'PPC',                  canonical:'Marasim', category:'PPC ads'},
   {raw:'META WOLF',            canonical:'Wolf Media', category:'Meta'}
 ];
@@ -1082,13 +1108,43 @@ Utils.splitAndPrettifyNames = function(v){
   const parts = s.split(/\s*[,;&\n\/]\s*|\s+and\s+/i).map(p=>p.trim()).filter(Boolean);
   return parts.map(Utils.prettifyPersonName).join(', ');
 };
+/* Some Sales Head names carry a location tag purely for the file's own readability
+   (e.g. "Birjesh Srivastava(Noida)" or "Amit Madaan-Pune" because that one person
+   handles several locations and the mapping sheet needs to disambiguate which row
+   is which) — the CRM itself may or may not use the same tagging convention. Since
+   the project name ALREADY carries the location (BPL format), the tag on the
+   person's name is redundant for matching and would otherwise cause a false
+   "Wrong Mapping". Handles both a parenthetical tag and a hyphen-separated one
+   (the same "Name-City" branch format used elsewhere for 4QT's Owner Branch). */
+Utils.stripLocationTag = function(name){
+  let s = Utils.norm(name).replace(/\s*\([^)]*\)\s*$/, '').trim();
+  if(s.includes('-')) s = Utils.extractNameFromBranch(s);
+  return s;
+};
+/* Splits a Sales Head cell that may list more than one person for the same
+   project (shared/split ownership) into individual candidate names, each
+   with any location tag removed and properly prettified. */
+Utils.splitSalesHeadCandidates = function(v){
+  const s = Utils.norm(v);
+  if(!s) return [];
+  return s.split(/\s*[,;&\n\/]\s*|\s+and\s+/i)
+    .map(p=>p.trim())
+    .filter(Boolean)
+    .map(p=>Utils.prettifyPersonName(Utils.stripLocationTag(p)));
+};
 
 /* ---------- Source Master (editable via Settings tab; Utils.Settings.sourceMaster is the live copy) ---------- */
 Utils._sourceIndex = null;
 Utils.sourceIndex = function(){
   if(Utils._sourceIndex) return Utils._sourceIndex;
   const idx = {};
-  Utils.Settings.sourceMaster.forEach(e=>{ idx[Utils.normKey(e.raw)] = e; });
+  Utils.Settings.sourceMaster.forEach(e=>{
+    idx[Utils.normKey(e.raw)] = e;
+    // Also index by the canonical name itself — a file that already writes the
+    // proper name directly ("Maven", "Wolf Media") should resolve immediately,
+    // not just files using the CRM's internal short code ("META-MV").
+    idx[Utils.normKey(e.canonical)] = e;
+  });
   Utils._sourceIndex = idx;
   return idx;
 };
@@ -1213,7 +1269,7 @@ Utils.COLUMN_ALIASES = {
   project:      ['Project Name','Project','ProjectName','Property','Opportunity Project','Opportunity Name','Project Name (BPL)'],
   source:       ['Sub Source','Sub-source','Subsource','Opportunity Sub Source','Source/Sub-source','CRM Source/Sub-source','Source','Lead Source','Opportunity Source','Source Name'],
   costCentre:   ['Cost Centre Person Name','Cost Center Person Name','Cost Centre Person','Cost Center Person','Team Member','CRM User','Owner (User Name)','Enquiry Owner','Handled By','Lead Owner','Owner','Assigned To','Sales Person','Employee Name','Cost Centre','Cost Center','Email','Owner Email'],
-  salesHead:    ['Sales Head','SalesHead','Reporting Manager','Manager','Team Head','Team Lead'],
+  salesHead:    ['Sales Head','SalesHead','Reporting Manager','Manager','Team Head','Team Lead','Cost Centre','Cost Center','Owner Branch','Branch Owner','Branch Owner Name'],
   status:       ['Current Status','Lead Status','Lead Stage','Stage','Status','Disposition','Opportunity Status'],
   date:         ['Date','Created Date','Created On','Lead Date','Enquiry Date','Opportunity Date'],
   agency:       ['Agency','Vendor','Agency Name','Partner'],
@@ -1307,7 +1363,7 @@ Utils.detectColumns = function(headers, fieldList, rows){
    LeadSquared rows are merged into one uploaded file (no reliable CRM column),
    this infers which system a lead belongs to from its project/location text. */
 Utils.CRM_STRUCTURE = {
-  '4QT': ['noida','greater noida','gurugram','gurgaon','delhi','pune','bangalore','bengaluru'],
+  '4QT': ['noida','greater noida','gurugram','gurgaon','delhi','pune','bangalore','bengaluru','ghaziabad'],
   'LeadSquared': ['mumbai','hyderabad','chennai','nri','kolkata','dubai'],
 };
 Utils.inferCrm = function(text){
@@ -2101,6 +2157,15 @@ DataTable.prototype._bindButtons = function(){
     Utils.downloadExcel(self._filteredRows(), self.columns, self.filename.replace('.xlsx','') + '_filtered.xlsx');
   });
 };
+/* Replaces the underlying data without resetting filters or search — used when
+   the source data changes (e.g. another table's filter narrowed the leads this
+   pivot is built from) but the person's own filter choices on THIS table should
+   survive the refresh rather than being wiped out. */
+DataTable.prototype.updateRows = function(newRows){
+  this.rows = newRows;
+  this.page = 1;
+  this.render();
+};
 DataTable.prototype._filteredRows = function(){
   let rows = this.rows;
   const dateRangeKeys = this.filterDefs.filter(f=>f.type==='daterange').map(f=>f.key);
@@ -2124,6 +2189,35 @@ DataTable.prototype._filteredRows = function(){
     rows = rows.filter(r=> this.columns.some(c=> Utils.norm(r[c.key]).toLowerCase().includes(term)) );
   }
   return rows;
+};
+/* Same filter/search logic as _filteredRows, but checkable against a SINGLE row from a
+   DIFFERENT dataset — lets other views (e.g. a full-status breakdown that includes rows
+   this table doesn't even display) stay in sync with whatever this table is filtered to. */
+DataTable.prototype._rowMatchesFilters = function(r, excludeKeys){
+  excludeKeys = excludeKeys || [];
+  const dateRangeKeys = this.filterDefs.filter(f=>f.type==='daterange').map(f=>f.key);
+  for(const k of Object.keys(this.filters)){
+    if(excludeKeys.includes(k)) continue;
+    const v = this.filters[k];
+    if(v===undefined || v===null || v==='') continue;
+    if(dateRangeKeys.includes(k)) continue;
+    if(k.endsWith('From') && dateRangeKeys.includes(k.slice(0,-4))) continue;
+    if(k.endsWith('To') && dateRangeKeys.includes(k.slice(0,-2))) continue;
+    if(Array.isArray(v)){ if(!v.includes(Utils.norm(r[k]))) return false; }
+    else if(Utils.norm(r[k]) !== v) return false;
+  }
+  for(const key of dateRangeKeys){
+    if(excludeKeys.includes(key)) continue;
+    const from = this.filters[key+'From'];
+    const to = this.filters[key+'To'];
+    if(from){ const d=Utils.toDateSafe(r[key]); if(!(d && d >= Utils.toDateSafe(from))) return false; }
+    if(to){ const d=Utils.toDateSafe(r[key]); if(!(d && d <= Utils.toDateSafe(to))) return false; }
+  }
+  if(this.searchTerm && this.searchTerm.trim()!==''){
+    const term = this.searchTerm.trim().toLowerCase();
+    if(!this.columns.some(c=> Utils.norm(r[c.key]).toLowerCase().includes(term))) return false;
+  }
+  return true;
 };
 DataTable.prototype.render = function(){
   const filtered = this._filteredRows();
@@ -2267,55 +2361,109 @@ M1.generate = async function(){
 
   M1.oursMap = oursMap; M1.crmMap = crmMap;
 
+  // Since one "Our Side" file can cover projects for BOTH CRMs mixed together (e.g. Pune
+  // and Mumbai projects in the same sheet), detect which CRM the uploaded CRM Master
+  // actually represents, so rows belonging to the OTHER CRM get a clear, specific
+  // explanation instead of a vague "no record found" — they need to be checked against
+  // that other CRM's own Master file, not this one.
+  const crmMasterTerritory = (function(){
+    let counts = {};
+    M1.crm.rows.forEach(row=>{
+      const p = Utils.val(row, crmMap.project);
+      const inferred = Utils.inferCrm(p);
+      if(inferred) counts[inferred] = (counts[inferred]||0) + 1;
+    });
+    const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    return entries.length ? entries[0][0] : null;
+  })();
+
   // Build CRM index keyed by CRM|BPL(normalized)|Source(canonical)
   const crmIndex = {}; // key -> array of {salesHead, userName, projectRaw}
   const crmBySourceCrm = {}; // "crm|sourceCanonical" -> [{bplNorm, ...}] for fuzzy search
+  // Reverse lookup: for a given Sales Head, every Project+Source they actually show up
+  // under in the CRM — lets a mismatch reveal exactly where that person IS currently
+  // assigned instead, rather than just saying "wrong" with no further detail.
+  const crmBySalesHead = {}; // normLoose(salesHead) -> [{project, source, crm}]
   let crmContaminatedCount = 0;
   M1.crm.rows.forEach(row=>{
     const project = Utils.val(row, crmMap.project);
     if(Utils.detectProjectContamination(project).contaminated) crmContaminatedCount++;
     const locationText = Utils.val(row, crmMap.location);
-    const crm = Utils.val(row, crmMap.crm) || Utils.inferCrm(locationText) || Utils.inferCrm(project) || '';
+    // CRM inference relies on the PROJECT's own city (BPL format) only — not a
+    // Location/Owner Branch column, since that can carry a person's own base city
+    // (e.g. "Biswajit Ghosh-Noida") that has nothing to do with which city THIS
+    // project is actually in, causing false CRM mismatches between two otherwise
+    // identical rows.
+    const crm = Utils.val(row, crmMap.crm) || Utils.inferCrm(project) || '';
     const sourceRaw = Utils.val(row, crmMap.source);
     const resolved = Utils.resolveSource(sourceRaw);
-    const salesHead = Utils.prettifyPersonName(Utils.val(row, crmMap.salesHead));
+    const salesHeadRaw = Utils.val(row, crmMap.salesHead);
+    const salesHead = Utils.prettifyPersonName(Utils.stripLocationTag(salesHeadRaw));
     const userName = Utils.splitAndPrettifyNames(Utils.val(row, crmMap.userName));
     const date = Utils.val(row, crmMap.date);
     const key = Utils.normKey(crm) + '|' + Utils.normLoose(project) + '|' + Utils.normKey(resolved.canonical);
     if(!crmIndex[key]) crmIndex[key] = [];
-    crmIndex[key].push({salesHead, userName, project, resolved, date});
+    crmIndex[key].push({salesHead, salesHeadRaw, userName, project, resolved, date});
     const bucketKey = Utils.normKey(crm)+'|'+Utils.normKey(resolved.canonical);
     if(!crmBySourceCrm[bucketKey]) crmBySourceCrm[bucketKey] = [];
-    crmBySourceCrm[bucketKey].push({project, salesHead, userName, resolved, date});
+    crmBySourceCrm[bucketKey].push({project, salesHead, salesHeadRaw, userName, resolved, date});
+
+    if(!Utils.isBlank(salesHead)){
+      const shKey = Utils.normLoose(salesHead);
+      if(!crmBySalesHead[shKey]) crmBySalesHead[shKey] = [];
+      const already = crmBySalesHead[shKey].some(e=> Utils.normLoose(e.project)===Utils.normLoose(project) && Utils.normKey(e.source)===Utils.normKey(resolved.canonical));
+      if(!already) crmBySalesHead[shKey].push({project, source: resolved.canonical || sourceRaw, crm});
+    }
   });
 
+  let territoryExcludedCount = 0;
   const out = M1.ours.rows.map(row=>{
     const project = Utils.val(row, oursMap.project);
     const crm = Utils.val(row, oursMap.crm) || Utils.inferCrm(project) || '';
     const mappingDate = Utils.val(row, oursMap.date);
     const sourceRaw = Utils.val(row, oursMap.source);
-    let expectedSalesHead = Utils.prettifyPersonName(Utils.val(row, oursMap.salesHead));
+    const costCentreRaw = Utils.val(row, oursMap.salesHead); // exactly as typed in "our sheet"
+    let expectedSalesHead = Utils.prettifyPersonName(Utils.stripLocationTag(costCentreRaw));
+    // Same project can be shared between more than one Sales Head — keep every
+    // candidate (each with its own location tag stripped) so a match against
+    // ANY of them counts, not just the first name in the cell.
+    let expectedSalesHeadCandidates = Utils.splitSalesHeadCandidates(costCentreRaw);
     const expectedUserName = Utils.splitAndPrettifyNames(Utils.val(row, oursMap.userName));
     const resolvedSource = Utils.resolveSource(sourceRaw);
     const contamination = Utils.detectProjectContamination(project);
 
+    // This row's inferred CRM (from the city named at the end of the project name,
+    // per BPL format) doesn't match the CRM Master file that was actually uploaded —
+    // it belongs to the OTHER CRM entirely, so it's excluded here rather than shown
+    // as a false "unable to validate" — check it again once you upload that other
+    // CRM's own Master file instead.
+    if(crmMasterTerritory && crm && crm !== crmMasterTerritory){
+      territoryExcludedCount++;
+      return null;
+    }
+
     const base = {
-      crm, project, mappingDate, source: resolvedSource.canonical || sourceRaw, sourceCategory: resolvedSource.category,
-      salesHead: expectedSalesHead, expectedUserName, expectedSource:'Mapping file',
-      actualSalesHead:'', actualUserName:'',
+      crm, mappingDate,
+      projectInOurSheet: project, projectInCrm: '',
+      costCentreInOurSheet: costCentreRaw, ownerBranchInCrm: '',
+      sourceInOurSheet: sourceRaw, sourceInCrm: '',
+      sourceCategory: resolvedSource.category,
+      expectedUserName, actualUserName:'',
       projectQuality: contamination.contaminated ? 'Contaminated' : 'Clean',
       projectQualityDetail: contamination.matches.join('; '),
-      result:'', reason:'', shouldBeMappedTo:'', action:''
+      result:'', reason:'', mismatch:'', shouldBeMappedTo:'', expectedOwnerActualCrmProjects:'', action:''
     };
 
     if(contamination.contaminated){
       base.result = 'UNABLE TO VALIDATE'; base.reason = 'Project Name Contains Non-BPL Text';
+      base.mismatch = 'Project name is not clean BPL format';
       base.action = `Project Name (BPL) should only be Builder + Project + Location — remove ${contamination.matches.join(' and ')} from it and re-upload.`;
       return base;
     }
 
     if(Utils.isBlank(sourceRaw)){
       base.result = 'UNABLE TO VALIDATE'; base.reason = 'Source Missing';
+      base.mismatch = 'Source missing on our sheet';
       base.action = 'Add the Source/Sub-source value before this record can be validated.';
       return base;
     }
@@ -2324,15 +2472,17 @@ M1.generate = async function(){
       const loc = Utils.resolveLocation(project);
       if(loc.single){
         expectedSalesHead = loc.single.salesHead[0];
-        base.salesHead = expectedSalesHead;
-        base.expectedSource = `Location Master default (${loc.single.region})`;
+        expectedSalesHeadCandidates = [expectedSalesHead];
+        base.costCentreInOurSheet = expectedSalesHead + ' (Location Master default)';
       } else if(loc.candidates.length){
         base.result = 'UNABLE TO VALIDATE'; base.reason = 'Ownership Field Missing';
         const names = Array.from(new Set(loc.candidates.flatMap(c=>c.salesHead))).join(', ');
+        base.mismatch = 'No Cost Centre on our sheet, and multiple possible owners';
         base.action = `No expected Sales Head on file, and "${loc.candidates.map(c=>c.region).join('/')}" has multiple possible owners (${names}) — assign manually.`;
         return base;
       } else {
         base.result = 'UNABLE TO VALIDATE'; base.reason = 'Ownership Field Missing';
+        base.mismatch = 'No Cost Centre on our sheet';
         base.action = 'Add the expected Sales Head before this record can be validated.';
         return base;
       }
@@ -2348,24 +2498,41 @@ M1.generate = async function(){
       const bestKey = Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0];
       const bestRecord = exact.find(e=>(Utils.normLoose(e.salesHead)||'(blank)')===bestKey);
       const actualSalesHead = bestRecord.salesHead;
-      base.actualSalesHead = actualSalesHead;
+      base.projectInCrm = bestRecord.project;
+      base.ownerBranchInCrm = bestRecord.salesHeadRaw;
+      base.sourceInCrm = bestRecord.resolved.canonical || Utils.val(row, oursMap.source);
       base.actualUserName = bestRecord.userName;
 
       if(Utils.isBlank(actualSalesHead)){
         base.result = 'UNABLE TO VALIDATE'; base.reason = 'Ownership Field Missing';
+        base.mismatch = 'CRM has no Owner Branch recorded for this project';
         base.action = 'CRM record has no Sales Head recorded — check CRM data.';
         return base;
       }
 
-      const salesHeadMatches = Utils.normLoose(actualSalesHead) === Utils.normLoose(expectedSalesHead);
+      // Matches if the CRM's actual Sales Head equals ANY of the expected candidates —
+      // covers both a single expected owner and a project shared between two people.
+      const salesHeadMatches = expectedSalesHeadCandidates.some(cand=> Utils.normLoose(cand) === Utils.normLoose(actualSalesHead));
 
       if(salesHeadMatches){
-        base.result = 'CORRECT'; base.reason = 'Expected ownership matches CRM';
+        base.result = 'CORRECT'; base.reason = 'Expected ownership matches CRM'; base.mismatch = 'No';
         base.action = 'No action needed.';
       } else {
         base.result = 'WRONG MAPPING'; base.reason = 'Sales Head Mismatch';
-        base.shouldBeMappedTo = expectedSalesHead;
-        base.action = `Update CRM mapping — Sales Head should be ${expectedSalesHead}.`;
+        base.mismatch = `Yes — Owner Branch should be ${expectedSalesHeadCandidates.join(' or ')}, CRM shows ${actualSalesHead}`;
+        base.shouldBeMappedTo = expectedSalesHeadCandidates.join(' or ');
+        // Reveals exactly where the expected owner(s) DO show up in the CRM, if
+        // anywhere — often the giveaway for a swapped/mixed-up mapping.
+        const otherAssignments = [];
+        expectedSalesHeadCandidates.forEach(cand=>{
+          const entries = crmBySalesHead[Utils.normLoose(cand)] || [];
+          entries.forEach(e=>{
+            if(Utils.normLoose(e.project) !== Utils.normLoose(project)) otherAssignments.push(`${e.project} (${e.source})`);
+          });
+        });
+        const uniqueOther = Array.from(new Set(otherAssignments));
+        base.expectedOwnerActualCrmProjects = uniqueOther.length ? uniqueOther.join(', ') : '(not found elsewhere in CRM)';
+        base.action = `Update CRM mapping — Sales Head should be ${expectedSalesHeadCandidates.join(' or ')}. ${uniqueOther.length ? 'In CRM, they are currently mapped to: '+uniqueOther.join(', ') : 'They do not appear anywhere else in the CRM either — check if they were left out of the CRM mapping entirely.'}`;
       }
       return base;
     }
@@ -2380,9 +2547,12 @@ M1.generate = async function(){
         if(score > bestScore){ bestScore = score; best = b; }
       });
       if(best && bestScore >= Utils.Settings.fuzzyThreshold){
-        base.actualSalesHead = best.salesHead;
+        base.projectInCrm = best.project;
+        base.ownerBranchInCrm = best.salesHeadRaw;
+        base.sourceInCrm = best.resolved.canonical || sourceRaw;
         base.actualUserName = best.userName;
         base.result = 'POSSIBLE MATCH'; base.reason = 'Possible BPL Match';
+        base.mismatch = `Project spelling differs — closest CRM match is "${best.project}", verify manually`;
         base.shouldBeMappedTo = best.project;
         base.action = `Verify project name spelling — closest CRM match is "${best.project}".`;
         return base;
@@ -2391,19 +2561,21 @@ M1.generate = async function(){
 
     if(resolvedSource.unmapped && !resolvedSource.blank){
       base.result = 'UNABLE TO VALIDATE'; base.reason = 'No Mapping Master Record';
+      base.mismatch = `Source "${sourceRaw}" not in source master`;
       base.action = `Source "${sourceRaw}" is not in the source master — add it or correct the value.`;
       return base;
     }
 
     base.result = 'UNABLE TO VALIDATE'; base.reason = 'No Mapping Master Record';
+    base.mismatch = 'No matching CRM record found at all for this Project + Source';
     base.action = 'No matching CRM record found for this CRM + Project + Source combination.';
     return base;
   });
 
-  M1.buildReport(out, crmContaminatedCount);
+  M1.buildReport(out.filter(Boolean), crmContaminatedCount, territoryExcludedCount);
 };
 
-M1.buildReport = function(rows, crmContaminatedCount){
+M1.buildReport = function(rows, crmContaminatedCount, territoryExcludedCount){
   document.getElementById('m1-report').style.display = 'block';
 
   const total = rows.length;
@@ -2420,27 +2592,26 @@ M1.buildReport = function(rows, crmContaminatedCount){
     <div class="kpi tone-amber clickable" id="m1-kpi-possible"><div class="k-label">Possible match</div><div class="k-value">${possible}</div></div>
     <div class="kpi tone-amber clickable" id="m1-kpi-unable"><div class="k-label">Unable to validate</div><div class="k-value">${unable}</div></div>
     <div class="kpi tone-red clickable" id="m1-kpi-contaminated"><div class="k-label">Project name contains team head/source</div><div class="k-value">${contaminated}</div></div>
+    ${territoryExcludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">Filtered out — belongs to the other CRM (by city in project name)</div><div class="k-value">${territoryExcludedCount}</div></div>` : ''}
   `;
   if(crmContaminatedCount > 0){
     Utils.toast(`Heads up: ${crmContaminatedCount} CRM Master row(s) also have a non-BPL project name`);
   }
 
   const columns = [
-    {key:'mappingDate', label:'Mapping Date'},
-    {key:'project', label:'Project Name (BPL)', wrap:true},
-    {key:'salesHead', label:'Sales Head'},
-    {key:'expectedUserName', label:'Expected Team Member'},
-    {key:'actualUserName', label:'Actual Team Member'},
-    {key:'source', label:'Source/Sub-source'},
-    {key:'result', label:'Mapping Result', pill:true},
+    {key:'projectInCrm', label:'Project In CRM', wrap:true},
+    {key:'projectInOurSheet', label:'Project In Our Sheet', wrap:true},
+    {key:'costCentreInOurSheet', label:'Cost Centre In Our Sheet'},
+    {key:'ownerBranchInCrm', label:'Owner Branch In CRM'},
+    {key:'sourceInOurSheet', label:'Source In Our Sheet'},
+    {key:'sourceInCrm', label:'Source In CRM'},
+    {key:'mismatch', label:'Mismatch', wrap:true},
   ];
   const filterDefs = [
     {key:'mappingDate', label:'Mapping Date', type:'daterange'},
-    {key:'salesHead', label:'Sales Head'},
-    {key:'project', label:'Project BPL'},
-    {key:'source', label:'Source/Sub-source'},
-    {key:'expectedUserName', label:'Expected Team Member'},
-    {key:'actualUserName', label:'Actual Team Member'},
+    {key:'costCentreInOurSheet', label:'Cost Centre In Our Sheet'},
+    {key:'projectInOurSheet', label:'Project In Our Sheet'},
+    {key:'sourceInOurSheet', label:'Source In Our Sheet'},
     {key:'result', label:'Mapping Result'},
   ];
 
@@ -2504,7 +2675,7 @@ const M2_FIELDS = [
 
 M2.generate = async function(){
   const leads = [];
-  const excludeStats = {count:0};
+  const excludeStats = {count:0, allRows:[]};
 
   if(M2.qt){
     const detected = Utils.detectColumns(M2.qt.headers, M2_FIELDS.map(f=>f.key), M2.qt.rows);
@@ -2524,9 +2695,11 @@ M2.generate = async function(){
   const paidOnly = !paidOnlyToggle || paidOnlyToggle.checked;
   let nonPaidExcluded = 0;
   let finalLeads = leads;
+  let finalAllRows = excludeStats.allRows;
   if(paidOnly){
     finalLeads = leads.filter(l=>l.isPerformance);
     nonPaidExcluded = leads.length - finalLeads.length;
+    finalAllRows = finalAllRows.filter(r=>r.isPerformance);
   }
 
   // Named people to exclude from Cost Centre entirely (customizable in Settings) — removed
@@ -2536,13 +2709,13 @@ M2.generate = async function(){
   let costCentreExcluded = 0;
   if(excludeNames.length){
     const beforeCount = finalLeads.length;
-    finalLeads = finalLeads.filter(l=>{
-      const cc = Utils.normLoose(l.areaCostCentre);
-      return !excludeNames.some(n=>cc.includes(n));
-    });
+    const matchesExcluded = l=>{ const cc = Utils.normLoose(l.areaCostCentre); return excludeNames.some(n=>cc.includes(n)); };
+    finalLeads = finalLeads.filter(l=>!matchesExcluded(l));
     costCentreExcluded = beforeCount - finalLeads.length;
+    finalAllRows = finalAllRows.filter(r=>!matchesExcluded(r));
   }
 
+  M2._allRows = finalAllRows;
   M2.buildReport(finalLeads, excludeStats.count, nonPaidExcluded, costCentreExcluded);
 };
 
@@ -2554,6 +2727,7 @@ Utils.LSQ_CITY_SUFFIX_RE = new RegExp('\\b(' + Utils.CRM_STRUCTURE.LeadSquared.j
 
 M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
   const mergedMode = !!(document.getElementById('m2-merged-toggle') && document.getElementById('m2-merged-toggle').checked);
+  if(!excludeStats.statusCounts) excludeStats.statusCounts = {};
   file.rows.forEach(row=>{
     const project = Utils.val(row, map.project);
 
@@ -2564,6 +2738,14 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
       if(excludeStats) excludeStats.count++;
       return;
     }
+
+    // Tallied for EVERY row that belongs to this CRM's territory, regardless of what
+    // status it ends up classified as — this is what powers the full status breakdown
+    // (New/Not Connected/Qualified/Dump/etc. all together), separate from the New/Not
+    // Connected-only leads array below.
+    const originalStatusForTally = Utils.val(row, map.status);
+    const statusTallyKey = Utils.isBlank(originalStatusForTally) ? '(blank)' : originalStatusForTally;
+    excludeStats.statusCounts[statusTallyKey] = (excludeStats.statusCounts[statusTallyKey] || 0) + 1;
 
     const costCentre = Utils.prettifyPersonName(Utils.val(row, map.costCentre));
     const sourceRaw = Utils.val(row, map.source);
@@ -2579,7 +2761,6 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
     if(Utils.isBlank(originalStatus)) return; // can't classify
 
     const statusClass = Utils.classifyStatus(originalStatus);
-    if(statusClass === 'other') return; // only New / Not Connected variants belong in this report
 
     const resolved = Utils.resolveSource(sourceRaw);
     const isPerformance = Utils.isPerformanceCategory(resolved.category);
@@ -2639,7 +2820,10 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
       if(d) daysInStatus = Math.max(0, Math.floor((Date.now() - d.getTime())/86400000));
     }
 
-    leads.push({
+    // Built once for EVERY row regardless of status, so the Full Status Breakdown can be
+    // filtered by the exact same Cost Centre/Source/Sales Head/etc. criteria as the main
+    // table — not just a static snapshot computed once at upload time.
+    const fullRow = {
       crm, date, leadName, project,
       salesHead: salesHead || '(unassigned)', salesHeadIsAssumed: usedLsqCostCentreForSalesHead,
       costCentre: costCentre || '(unassigned)',
@@ -2647,16 +2831,134 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
       source: resolved.canonical || sourceRaw, sourceCategory: resolved.category,
       channel: Utils.classifyChannel(resolved.category), agency,
       originalStatus, statusClass,
-      statusLabel: statusClass==='new' ? 'New' : 'Not Connected',
-      remarks: remarks || (statusClass==='not_connected' ? 'Not specified — ask CRM/sales for a reason code' : ''),
-      salesRemark: salesRemark || '',
-      notConnectedReason: statusClass==='not_connected' ? (salesRemark || remarks || 'Not specified — ask CRM/sales for a reason code') : '',
+      statusLabel: statusClass==='new' ? 'New' : (statusClass==='not_connected' ? 'Not Connected' : ''),
       daysInStatus, agingBucket: Utils.agingBucket(daysInStatus),
       followUpCount: Utils.isBlank(followUpCount) ? '' : followUpCount,
       isPerformance,
-      flag: isPerformance ? 'PERFORMANCE LEAD - SALES ATTENTION' : ''
-    });
+      flag: isPerformance ? 'PERFORMANCE LEAD - SALES ATTENTION' : '',
+      remarks: remarks || '', salesRemark: salesRemark || ''
+    };
+    if(excludeStats.allRows) excludeStats.allRows.push(fullRow);
+
+    if(statusClass === 'other') return; // only New / Not Connected variants belong in the main leads report
+
+    leads.push(Object.assign({}, fullRow, {
+      remarks: remarks || (statusClass==='not_connected' ? 'Not specified — ask CRM/sales for a reason code' : ''),
+      salesRemark: salesRemark || '',
+      notConnectedReason: statusClass==='not_connected' ? (salesRemark || remarks || 'Not specified — ask CRM/sales for a reason code') : ''
+    }));
   });
+};
+
+/* Combines the detail table's filters AND the pivot table's filters into one
+   scope for the Full Status Breakdown — either one changing should update it.
+   The pivot's own "New / Not Connected" filter dimension is deliberately
+   excluded here: narrowing to a Cost Centre/Source/Team Member from the pivot
+   should still show ALL statuses for that scope, not collapse to one status,
+   since showing every status is this card's whole purpose. */
+M2.getFilteredAllRows = function(){
+  let rows = M2._allRows || [];
+  if(M2.table) rows = rows.filter(r=>M2.table._rowMatchesFilters(r));
+  if(M2.summaryTable) rows = rows.filter(r=>M2.summaryTable._rowMatchesFilters(r, ['statusLabel']));
+  return rows;
+};
+
+/* Full status breakdown — every status value found in the file(s), not just the
+   New/Not Connected ones this module normally keeps. Answers "out of ALL leads
+   (Qualified, Dump, Requirement Mismatch, everything), what % is Not Connected"
+   — a genuinely different denominator than New+Not Connected alone would give.
+   Takes already-filtered rows (see getFilteredAllRows) so it stays in sync with
+   whichever table — detail or pivot — the person is actually filtering. */
+M2.renderFullStatusBreakdown = function(filtered){
+  const card = document.getElementById('m2-full-status-card');
+  const total = filtered.length;
+  if(!total){ if(card) card.style.display='none'; return; }
+  if(card) card.style.display = 'block';
+
+  const statusCounts = {};
+  filtered.forEach(r=>{ statusCounts[r.originalStatus] = (statusCounts[r.originalStatus]||0) + 1; });
+  const notConnectedTotal = filtered.filter(r=>r.statusClass==='not_connected').length;
+  const notConnectedPct = Math.round((notConnectedTotal/total)*1000)/10;
+
+  document.getElementById('m2-full-status-headline').innerHTML =
+    `<div class="kpi tone-red"><div class="k-label">Not Connected — % of ALL statuses</div><div class="k-value">${notConnectedPct}%</div></div>
+     <div class="kpi tone-accent"><div class="k-label">Total leads (every status)</div><div class="k-value">${total}</div></div>`;
+
+  const rows = Object.entries(statusCounts)
+    .map(([status, count])=>({status, count, pct: Math.round((count/total)*1000)/10}))
+    .sort((a,b)=> b.count - a.count);
+
+  const tableEl = document.getElementById('m2-full-status-table');
+  tableEl.innerHTML = `<table class="attach-table">
+    <tr><th>Status (as it appears in the CRM)</th><th>Count</th><th>% of Total</th></tr>
+    ${rows.map(r=>`<tr><td>${Utils.escapeHtml(r.status)}</td><td>${r.count}</td><td>${r.pct}%</td></tr>`).join('')}
+  </table>`;
+};
+
+/* Flags two specific patterns of wrong disposition, both driven by scanning the
+   actual remark/reason text sales/CRM entered — not just trusting the status label:
+
+   1. "Not Connected" leads whose own remark says contact WAS actually made (shared
+      project details, sent brochure, discussed, etc.) — if contact genuinely
+      happened, "Not Connected" is the wrong disposition for that lead.
+
+   2. Dumped leads (any "(Dump)" status) whose remark mentions a SITE VISIT — a
+      lead who visited the site is a serious buyer signal, so the dump reason
+      needs to be a strong one (budget issue, bought elsewhere, cancelled, etc.);
+      if the remark doesn't ALSO contain one of those strong justifications, it's
+      flagged as needing review rather than assumed valid. */
+const CONTACT_EVIDENCE_RE = /\b(shared|sent|provided|discussed|explained|informed|spoke|spoken|called|connected|forwarded|briefed|walked\s*through)\b/i;
+const SITE_VISIT_RE = /\bsite\s*visit(ed)?\b|\bvisited\s*(the\s*)?site\b/i;
+const STRONG_DUMP_JUSTIFICATION_RE = /\b(budget|not\s*interested|bought|purchased|booked|sold\s*out|elsewhere|cancel|out\s*of\s*(location|budget)|already\s*(bought|purchased|booked)|no\s*response|unreachable|invalid|duplicate|wrong\s*number)\b/i;
+
+M2.renderDispositionCheck = function(leads, allRows){
+  const card = document.getElementById('m2-disposition-card');
+
+  // Check 1: Not Connected leads whose remark suggests contact actually happened
+  const wrongNotConnected = leads.filter(l=>{
+    if(l.statusClass !== 'not_connected') return false;
+    const text = [l.remarks, l.salesRemark].join(' ');
+    return CONTACT_EVIDENCE_RE.test(text);
+  });
+
+  // Check 2: Dumped leads with a site-visit mention but no strong justification in the remark
+  const weakDumpReasons = allRows.filter(r=>{
+    if(!/dump/i.test(r.originalStatus||'')) return false;
+    const text = [r.remarks, r.salesRemark].join(' ');
+    if(!SITE_VISIT_RE.test(text)) return false;
+    return !STRONG_DUMP_JUSTIFICATION_RE.test(text);
+  });
+
+  if(!wrongNotConnected.length && !weakDumpReasons.length){ if(card) card.style.display='none'; return; }
+  if(card) card.style.display = 'block';
+
+  document.getElementById('m2-disposition-headline').innerHTML = `
+    <div class="kpi tone-red clickable" id="m2-kpi-wrongnc"><div class="k-label">Not Connected, but remark shows contact was made</div><div class="k-value">${wrongNotConnected.length}</div></div>
+    <div class="kpi tone-red clickable" id="m2-kpi-weakdump"><div class="k-label">Dumped after a site visit, without a strong reason</div><div class="k-value">${weakDumpReasons.length}</div></div>
+  `;
+
+  const renderList = (elId, rows, cols)=>{
+    const el = document.getElementById(elId);
+    if(!rows.length){ el.innerHTML = '<div class="empty-state">None found.</div>'; return; }
+    el.innerHTML = `<table class="attach-table">
+      <tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr>
+      ${rows.slice(0,200).map(r=>`<tr>${cols.map(c=>`<td>${Utils.escapeHtml(r[c.key]||'')}</td>`).join('')}</tr>`).join('')}
+    </table>${rows.length>200 ? `<div class="mini-note" style="margin-top:8px;">Showing first 200 of ${rows.length} — download the full report below for all of them.</div>` : ''}`;
+  };
+
+  const ncCols = [
+    {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
+    {key:'costCentre', label:'Team Member'}, {key:'remarks', label:'Remark'}, {key:'salesRemark', label:'Sales Remark'}
+  ];
+  const dumpCols = [
+    {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
+    {key:'originalStatus', label:'Status'}, {key:'remarks', label:'Remark'}, {key:'salesRemark', label:'Sales Remark'}
+  ];
+  renderList('m2-disposition-nc-list', wrongNotConnected, ncCols);
+  renderList('m2-disposition-dump-list', weakDumpReasons, dumpCols);
+
+  document.getElementById('m2-dl-wrongnc').onclick = ()=> Utils.downloadExcel(wrongNotConnected, ncCols, 'not_connected_with_contact_evidence.xlsx');
+  document.getElementById('m2-dl-weakdump').onclick = ()=> Utils.downloadExcel(weakDumpReasons, dumpCols, 'dumped_after_site_visit_weak_reason.xlsx');
 };
 
 M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExcluded){
@@ -2664,6 +2966,7 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
   M2._excludedCount = excludedCount || 0;
   M2._nonPaidExcluded = nonPaidExcluded || 0;
   M2._costCentreExcluded = costCentreExcluded || 0;
+  M2.renderDispositionCheck(leads, M2._allRows || []);
 
   const columns = [
     {key:'crm', label:'CRM'},
@@ -2702,42 +3005,22 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
 
   // onChange fires on every render (including the first, with no filters active yet) so the
   // summary cards above the table always reflect exactly what's currently filtered — never a
-  // stale full-dataset view once the person starts narrowing things down.
+  // stale full-dataset view once the person starts narrowing things down. The Full Status
+  // Breakdown is recomputed here too, from the separate all-statuses dataset, so it stays
+  // in sync with the same filters even though it includes rows this table never displays.
   M2.table = new DataTable({
     prefix:'m2', columns:columns, rows:leads, filterDefs:filterDefs,
     filename:'new_not_connected_followup.xlsx',
-    onChange: function(filteredRows){ M2.renderSummaries(filteredRows); }
+    onChange: function(filteredRows){
+      M2.renderSummaries(filteredRows);
+      M2.renderFullStatusBreakdown(M2.getFilteredAllRows());
+    }
   });
 };
 
 M2.renderSummaries = function(leads){
-  const NO_REASON_TEXT = 'Not specified — ask CRM/sales for a reason code';
-  const excludedCount = M2._excludedCount || 0;
-
-  const perfLeads = leads.filter(l=>l.isPerformance);
-  const newPerf = perfLeads.filter(l=>l.statusClass==='new').length;
-  const ncPerf = perfLeads.filter(l=>l.statusClass==='not_connected').length;
-  const affectedSources = new Set(perfLeads.map(l=>Utils.normLoose(l.source))).size;
-  const noReasonCount = leads.filter(l=>l.statusClass==='not_connected' && l.remarks===NO_REASON_TEXT).length;
-  const staleNC = leads.filter(l=>l.statusClass==='not_connected' && (l.agingBucket==='8–14 days' || l.agingBucket==='15–30 days' || l.agingBucket==='30+ days')).length;
-
-  document.getElementById('m2-kpis').innerHTML = `
-    <div class="kpi tone-red clickable" id="m2-kpi-newperf"><div class="k-label">New performance leads</div><div class="k-value">${newPerf}</div></div>
-    <div class="kpi tone-red clickable" id="m2-kpi-ncperf"><div class="k-label">Not Connected performance leads</div><div class="k-value">${ncPerf}</div></div>
-    <div class="kpi tone-amber"><div class="k-label">Affected sources</div><div class="k-value">${affectedSources}</div></div>
-    <div class="kpi tone-red clickable" id="m2-kpi-stale"><div class="k-label">Not Connected, 8+ days old</div><div class="k-value">${staleNC}</div></div>
-    <div class="kpi tone-amber clickable" id="m2-kpi-noreason"><div class="k-label">Not Connected, no reason on file</div><div class="k-value">${noReasonCount}</div></div>
-    ${excludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">Excluded from 4QT (LeadSquared territory)</div><div class="k-value">${excludedCount}</div></div>` : ''}
-    ${M2._nonPaidExcluded>0 ? `<div class="kpi tone-accent"><div class="k-label">Non-paid / unmapped sources excluded</div><div class="k-value">${M2._nonPaidExcluded}</div></div>` : ''}
-    ${M2._costCentreExcluded>0 ? `<div class="kpi tone-accent"><div class="k-label">Excluded (Cost Centre name filter)</div><div class="k-value">${M2._costCentreExcluded}</div></div>` : ''}
-  `;
-  document.getElementById('m2-kpi-newperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'New'}));
-  document.getElementById('m2-kpi-ncperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'Not Connected'}));
-  document.getElementById('m2-kpi-noreason').addEventListener('click', ()=> M2.table.setFilters({remarks:NO_REASON_TEXT, statusLabel:'Not Connected'}));
-  document.getElementById('m2-kpi-stale').addEventListener('click', ()=>{
-    M2.table.setFilters({statusLabel:'Not Connected'});
-    Utils.toast('Filtered to Not Connected — sort/scan the Days Since Assigned column, or click an Aging row above for a specific range');
-  });
+  M2._allFilteredLeads = leads; // the detail table's current filtered set — pivot rows are always derived from this
+  M2.computeAndRenderKpisAndBreakdowns(leads);
 
   // ---- The one consolidated report: Cost Centre → Team Member → Source → Status → Count ----
   // Long format (one row per Status, not two count columns) so New/Not Connected is a real
@@ -2767,12 +3050,66 @@ M2.renderSummaries = function(leads){
     {key:'channel', label:'Channel'},
     {key:'statusLabel', label:'New / Not Connected'},
   ];
-  M2.summaryTable = new DataTable({
-    prefix:'m2sum', columns:pivotColumns, rows:pivotRows, filterDefs:pivotFilterDefs,
-    filename:'cost_centre_team_source_summary.xlsx', pageSize:50, totalColumns:['count']
-  });
+
+  if(!M2.summaryTable){
+    // First build — the underlying leads changed (detail table filter), so this pivot's OWN
+    // filters (if the person had set any) intentionally reset here too, since the data itself
+    // is different now, not just re-filtered.
+    M2.summaryTable = new DataTable({
+      prefix:'m2sum', columns:pivotColumns, rows:pivotRows, filterDefs:pivotFilterDefs,
+      filename:'cost_centre_team_source_summary.xlsx', pageSize:50, totalColumns:['count'],
+      onChange: function(filteredPivotRows){
+        // The pivot's OWN filter changed (not the detail table) — reconstruct which underlying
+        // leads that corresponds to, and refresh just the KPI row/breakdowns to match, WITHOUT
+        // rebuilding this table itself (that would wipe out the filter the person just set).
+        const allowedKeys = new Set(filteredPivotRows.map(r=>[r.areaCostCentre, r.costCentre, r.source, r.statusLabel].join('||')));
+        const matchingLeads = M2._allFilteredLeads.filter(l=> allowedKeys.has([l.areaCostCentre, l.costCentre, l.source, l.statusLabel].join('||')));
+        M2.computeAndRenderKpisAndBreakdowns(matchingLeads);
+        M2.renderFullStatusBreakdown(M2.getFilteredAllRows());
+      }
+    });
+  } else {
+    M2.summaryTable.updateRows(pivotRows);
+  }
 
   // ---- Not Connected reason breakdown, straight from the executive/CRM remarks ----
+  M2.renderReasonAndAgingBreakdowns(leads);
+};
+
+M2.computeAndRenderKpisAndBreakdowns = function(leads){
+  const NO_REASON_TEXT = 'Not specified — ask CRM/sales for a reason code';
+  const excludedCount = M2._excludedCount || 0;
+
+  const perfLeads = leads.filter(l=>l.isPerformance);
+  const newPerf = perfLeads.filter(l=>l.statusClass==='new').length;
+  const ncPerf = perfLeads.filter(l=>l.statusClass==='not_connected').length;
+  const affectedSources = new Set(perfLeads.map(l=>Utils.normLoose(l.source))).size;
+  const noReasonCount = leads.filter(l=>l.statusClass==='not_connected' && l.remarks===NO_REASON_TEXT).length;
+  const staleNC = leads.filter(l=>l.statusClass==='not_connected' && (l.agingBucket==='8–14 days' || l.agingBucket==='15–30 days' || l.agingBucket==='30+ days')).length;
+
+  document.getElementById('m2-kpis').innerHTML = `
+    <div class="kpi tone-red clickable" id="m2-kpi-newperf"><div class="k-label">New performance leads</div><div class="k-value">${newPerf}</div></div>
+    <div class="kpi tone-red clickable" id="m2-kpi-ncperf"><div class="k-label">Not Connected performance leads</div><div class="k-value">${ncPerf}</div></div>
+    <div class="kpi tone-amber"><div class="k-label">Affected sources</div><div class="k-value">${affectedSources}</div></div>
+    <div class="kpi tone-red clickable" id="m2-kpi-stale"><div class="k-label">Not Connected, 8+ days old</div><div class="k-value">${staleNC}</div></div>
+    <div class="kpi tone-amber clickable" id="m2-kpi-noreason"><div class="k-label">Not Connected, no reason on file</div><div class="k-value">${noReasonCount}</div></div>
+    ${excludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">Excluded from 4QT (LeadSquared territory)</div><div class="k-value">${excludedCount}</div></div>` : ''}
+    ${M2._nonPaidExcluded>0 ? `<div class="kpi tone-accent"><div class="k-label">Non-paid / unmapped sources excluded</div><div class="k-value">${M2._nonPaidExcluded}</div></div>` : ''}
+    ${M2._costCentreExcluded>0 ? `<div class="kpi tone-accent"><div class="k-label">Excluded (Cost Centre name filter)</div><div class="k-value">${M2._costCentreExcluded}</div></div>` : ''}
+  `;
+  document.getElementById('m2-kpi-newperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'New'}));
+  document.getElementById('m2-kpi-ncperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'Not Connected'}));
+  document.getElementById('m2-kpi-noreason').addEventListener('click', ()=> M2.table.setFilters({remarks:NO_REASON_TEXT, statusLabel:'Not Connected'}));
+  document.getElementById('m2-kpi-stale').addEventListener('click', ()=>{
+    M2.table.setFilters({statusLabel:'Not Connected'});
+    Utils.toast('Filtered to Not Connected — sort/scan the Days Since Assigned column, or click an Aging row above for a specific range');
+  });
+
+  M2.renderReasonAndAgingBreakdowns(leads);
+};
+
+M2.renderReasonAndAgingBreakdowns = function(leads){
+  const NO_REASON_TEXT = 'Not specified — ask CRM/sales for a reason code';
   const ncLeads = leads.filter(l=>l.statusClass==='not_connected');
   const byReason = {};
   ncLeads.forEach(l=>{
@@ -2933,6 +3270,42 @@ M3.generate = async function(){
 };
 
 /* ---- Mode A: agency sends a per-project summary sheet with a pre-computed count ---- */
+/* Detects which CRM's territory a dataset's projects mostly belong to, using the
+   same BPL-format city-suffix rule Module 2 uses (4QT: Noida/Gurugram/Delhi/Pune/
+   Bangalore; LeadSquared: Mumbai/Hyderabad/Chennai/NRI/Kolkata). Used so a single
+   agency, whose raw file covers BOTH CRMs' cities mixed together, gets automatically
+   scoped down to just the CRM currently being checked — without needing the person
+   to manually pre-split their agency file by hand. */
+M3.detectCrmTerritory = function(rows, projectKey){
+  if(!projectKey) return null;
+  let lsqCount = 0, otherCount = 0;
+  rows.forEach(row=>{
+    const project = Utils.val(row, projectKey);
+    if(Utils.isBlank(project)) return;
+    if(Utils.LSQ_CITY_SUFFIX_RE.test(project)) lsqCount++;
+    else otherCount++;
+  });
+  if(lsqCount===0 && otherCount===0) return null;
+  return lsqCount > otherCount ? 'LeadSquared' : '4QT';
+};
+/* Filters agency rows down to just the ones matching the given CRM territory,
+   returning {rows, excludedCount} — the excluded count is surfaced so this
+   scoping is visible, not a silent filter. */
+M3.filterAgencyByTerritory = function(rows, projectKey, targetTerritory){
+  if(!targetTerritory || !projectKey) return {rows, excludedCount:0};
+  const kept = [];
+  let excludedCount = 0;
+  rows.forEach(row=>{
+    const project = Utils.val(row, projectKey);
+    if(Utils.isBlank(project)){ kept.push(row); return; } // can't determine — keep rather than silently drop
+    const isLsq = Utils.LSQ_CITY_SUFFIX_RE.test(project);
+    const rowTerritory = isLsq ? 'LeadSquared' : '4QT';
+    if(rowTerritory === targetTerritory) kept.push(row);
+    else excludedCount++;
+  });
+  return {rows: kept, excludedCount};
+};
+
 M3.generateSummaryMode = async function(){
   const aDetected = Utils.detectColumns(M3.agency.headers, M3_AGENCY_SUMMARY_FIELDS.map(f=>f.key), M3.agency.rows);
   const aMap = await Utils.resolveMapping('Map columns — Agency Summary File','Confirm which column holds each field. Source is optional — map it if your sheet has one, to keep matching scoped to the same source.', M3_AGENCY_SUMMARY_FIELDS, M3.agency.headers, aDetected);
@@ -2942,6 +3315,14 @@ M3.generateSummaryMode = async function(){
   if(!cMap) return;
 
   const useSource = !!(aMap.source && cMap.source);
+
+  // Scope the agency's rows to whichever CRM's territory this CRM file actually belongs
+  // to — handles an agency whose own file covers projects for BOTH CRMs mixed together.
+  const crmTerritory = M3.detectCrmTerritory(M3.crm.rows, cMap.project);
+  const territoryResult = M3.filterAgencyByTerritory(M3.agency.rows, aMap.project, crmTerritory);
+  const agencyRowsScoped = territoryResult.rows;
+  M3._territoryExcludedCount = territoryResult.excludedCount;
+  M3._crmTerritory = crmTerritory;
 
   const crmByKey = {};
   M3.crm.rows.forEach(row=>{
@@ -2959,7 +3340,7 @@ M3.generateSummaryMode = async function(){
   });
 
   const out = [];
-  M3.agency.rows.forEach(row=>{
+  agencyRowsScoped.forEach(row=>{
     const project = Utils.val(row, aMap.project);
     if(Utils.isBlank(project)) return;
     const generated = parseFloat(Utils.val(row, aMap.generatedCount)) || 0;
@@ -2978,6 +3359,7 @@ M3.generateSummaryMode = async function(){
     const gap = generated - received;
     const gapPct = generated > 0 ? Math.round((gap/generated)*1000)/10 : null;
     const tolerance = Math.max(1, Math.round(generated*0.05));
+
 
     let status, action;
     if(!match.matches.length){
@@ -3051,8 +3433,18 @@ M3.buildSummaryReport = function(rows){
   const filterDefs = [
     {key:'source', label:'Source'},
     {key:'region', label:'Region'},
-    {key:'status', label:'Verdict'},
+    {key:'agencyProject', label:'Agency Project'},
+    {key:'matchedCrmProject', label:'Matched CRM Project(s)'},
+    {key:'generated', label:'Agency Claimed (Total Leads)'},
+    {key:'received', label:'CRM Actual'},
+    {key:'gap', label:'Gap'},
+    {key:'gapPct', label:'Gap %'},
+    {key:'assignedTarget', label:'Assigned Lead Target'},
+    {key:'shortfall', label:'Shortfall (Agency-reported)'},
+    {key:'cpl', label:'CPL'},
+    {key:'totalSpent', label:'Total Spent'},
     {key:'agencyStatus', label:'Agency Status'},
+    {key:'status', label:'Verdict'},
   ];
 
   new DataTable({
@@ -3076,6 +3468,15 @@ M3.generateLeadLevel = async function(){
 
   const useSource = !!(aMap.source && cMap.source);
 
+  // Scope the agency's rows to whichever CRM's territory this CRM file actually belongs
+  // to — handles an agency whose own file covers projects for BOTH CRMs mixed together,
+  // rather than requiring the person to pre-split their agency file by hand.
+  const crmTerritory = M3.detectCrmTerritory(M3.crm.rows, cMap.project);
+  const territoryResult = M3.filterAgencyByTerritory(M3.agency.rows, aMap.project, crmTerritory);
+  const agencyRowsScoped = territoryResult.rows;
+  M3._territoryExcludedCount = territoryResult.excludedCount;
+  M3._crmTerritory = crmTerritory;
+
   // CRM side, grouped by (source, project) if source is mapped on both sides, else project alone
   const crmGroups = {};
   M3.crm.rows.forEach(row=>{
@@ -3097,7 +3498,7 @@ M3.generateLeadLevel = async function(){
   // CRM's projects for that SAME source (scoping the match avoids cross-source
   // false matches, e.g. two different sources happening to share a project name)
   const agencyGroups = {};
-  M3.agency.rows.forEach(row=>{
+  agencyRowsScoped.forEach(row=>{
     const project = Utils.val(row, aMap.project);
     if(Utils.isBlank(project)) return;
     const source = useSource ? (Utils.resolveSource(Utils.val(row, aMap.source)).canonical || Utils.val(row, aMap.source)) : '';
@@ -3144,8 +3545,8 @@ M3.generateLeadLevel = async function(){
   });
 
   out.sort((a,b)=> Math.abs(b.gap) - Math.abs(a.gap));
-  M3.buildAgencyGenerationSummary(aMap);
-  M3.buildDailyGapReport(aMap, cMap, agencyGroups, crmGroups, agencyMatches, useSource);
+  M3.buildAgencyGenerationSummary(aMap, agencyRowsScoped);
+  M3.buildDailyGapReport(aMap, cMap, agencyGroups, crmGroups, agencyMatches, useSource, agencyRowsScoped);
   M3.buildSimpleReport(out, useSource, useDate);
 };
 
@@ -3153,12 +3554,12 @@ M3.generateLeadLevel = async function(){
    Leads Generated — independent of the CRM comparison. Shows exactly what the
    agency claims to have delivered, day by day, project by project, source by
    source. Only builds if a Date column was mapped on the agency side. */
-M3.buildAgencyGenerationSummary = function(aMap){
+M3.buildAgencyGenerationSummary = function(aMap, agencyRows){
   const card = document.getElementById('m3-agency-gen-card');
   if(!aMap.date){ if(card) card.style.display = 'none'; return; }
 
   const byKey = {};
-  M3.agency.rows.forEach(row=>{
+  (agencyRows || M3.agency.rows).forEach(row=>{
     const project = Utils.val(row, aMap.project);
     if(Utils.isBlank(project)) return;
     const source = aMap.source ? (Utils.resolveSource(Utils.val(row, aMap.source)).canonical || Utils.val(row, aMap.source)) : '(not mapped)';
@@ -3183,6 +3584,7 @@ M3.buildAgencyGenerationSummary = function(aMap){
     {key:'date', label:'Date'},
     {key:'project', label:'Project'},
     {key:'source', label:'Source'},
+    {key:'count', label:'Leads Generated'},
   ];
   new DataTable({
     prefix:'m3agen', columns:columns, rows:rows, filterDefs:filterDefs,
@@ -3194,7 +3596,7 @@ M3.buildAgencyGenerationSummary = function(aMap){
    both sides' counts and the difference — same project-matching already
    established for the aggregate report, just broken out per day instead of
    summed across the whole period. Needs Date mapped on BOTH sides. */
-M3.buildDailyGapReport = function(aMap, cMap, agencyGroups, crmGroups, agencyMatches, useSource){
+M3.buildDailyGapReport = function(aMap, cMap, agencyGroups, crmGroups, agencyMatches, useSource, agencyRows){
   const card = document.getElementById('m3-daily-gap-card');
   if(!aMap.date || !cMap.date){ if(card) card.style.display = 'none'; return; }
 
@@ -3202,7 +3604,7 @@ M3.buildDailyGapReport = function(aMap, cMap, agencyGroups, crmGroups, agencyMat
 
   // Per-date counts, keyed by source||project||dateLabel, built straight from the raw rows
   const agencyDateCounts = {};
-  M3.agency.rows.forEach(row=>{
+  (agencyRows || M3.agency.rows).forEach(row=>{
     const project = Utils.val(row, aMap.project);
     if(Utils.isBlank(project)) return;
     const source = useSource ? (Utils.resolveSource(Utils.val(row, aMap.source)).canonical || Utils.val(row, aMap.source)) : '';
@@ -3260,6 +3662,10 @@ M3.buildDailyGapReport = function(aMap, cMap, agencyGroups, crmGroups, agencyMat
   const filterDefs = [
     {key:'date', label:'Date'},
     {key:'project', label:'Project'},
+    {key:'matchedCrmProject', label:'Matched CRM Project'},
+    {key:'agencyCount', label:'Lead Claimed from Agency'},
+    {key:'crmCount', label:'Lead Claimed from CRM'},
+    {key:'diff', label:'Difference'},
   ];
   if(useSource){
     columns.splice(1, 0, {key:'source', label:'Source'});
@@ -3288,6 +3694,7 @@ M3.buildSimpleReport = function(rows, useSource, useDate){
     <div class="kpi tone-accent"><div class="k-label">Leads actually in CRM</div><div class="k-value">${totalReceived}</div></div>
     <div class="kpi tone-red"><div class="k-label">Total difference</div><div class="k-value">${totalGap}</div></div>
     <div class="kpi tone-amber"><div class="k-label">Projects with no CRM match</div><div class="k-value">${unmatchedCount}</div></div>
+    ${M3._territoryExcludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">Agency rows excluded (belong to the other CRM's cities, not ${Utils.escapeHtml(M3._crmTerritory||'this CRM')})</div><div class="k-value">${M3._territoryExcludedCount}</div></div>` : ''}
   `;
 
   const byType = {};
@@ -3306,6 +3713,11 @@ M3.buildSimpleReport = function(rows, useSource, useDate){
     {key:'status', label:'Verdict', pill:true},
   ];
   const filterDefs = [
+    {key:'project', label:'Project'},
+    {key:'matchedCrmProject', label:'Matched CRM Project'},
+    {key:'generated', label:'Lead Claimed from Agency'},
+    {key:'received', label:'Lead Claimed from CRM'},
+    {key:'gap', label:'Difference'},
     {key:'status', label:'Verdict'},
   ];
   if(useDate){
