@@ -172,6 +172,8 @@ button{font-family:inherit;}
   min-width:220px;max-width:320px;padding:8px;
 }
 .ms-actions{display:flex;gap:6px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--line);}
+.ms-search{width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;}
+.ms-search:focus{outline:none;border-color:var(--accent);}
 .ms-actions button{
   flex:1;padding:5px 8px;border:1px solid var(--line-strong);border-radius:4px;background:var(--paper);
   font-size:11.5px;cursor:pointer;color:var(--text);
@@ -386,16 +388,6 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       </div>
 
       <div id="m2-report" style="display:none;">
-        <div class="card" id="m2-disposition-card" style="display:none;">
-          <h2>Wrong Disposition Check <small>Flags leads where the status doesn't match what the remark actually says happened</small></h2>
-          <div class="kpi-row" id="m2-disposition-headline"></div>
-          <h2 style="margin-top:18px;">Not Connected, but the remark shows contact was made</h2>
-          <div id="m2-disposition-nc-list"></div>
-          <div class="btn-row" style="margin-top:10px;"><button class="btn btn-sm" id="m2-dl-wrongnc">Download this list</button></div>
-          <h2 style="margin-top:18px;">Dumped after a site visit, without a strong reason</h2>
-          <div id="m2-disposition-dump-list"></div>
-          <div class="btn-row" style="margin-top:10px;"><button class="btn btn-sm" id="m2-dl-weakdump">Download this list</button></div>
-        </div>
         <div class="card" id="m2-full-status-card" style="display:none;">
           <h2>Full Status Breakdown <small>Every status in the file — New, Not Connected, Qualified, Dump, everything — not just the New/Not Connected subset this report normally keeps</small></h2>
           <div class="kpi-row" id="m2-full-status-headline"></div>
@@ -2028,6 +2020,9 @@ DataTable.prototype._renderFilterBar = function(){
       html += `<div class="f-field"><label>${Utils.escapeHtml(f.label)}</label><input type="date" id="${this.prefix}-f-${f.key}"></div>`;
     } else {
       // Multi-select: a toggle button ("All" / "N selected") that opens a checkbox panel.
+      // A search box at the top narrows the visible checkboxes (not the actual
+      // selection) once a field has enough distinct values that scrolling to find
+      // one by eye becomes impractical — e.g. a Project filter with 100+ names.
       const values = Array.from(new Set(this.rows.map(r=>Utils.norm(r[f.key])).filter(v=>v!==''))).sort();
       html += `<div class="f-field ms-field">
         <label>${Utils.escapeHtml(f.label)}</label>
@@ -2038,6 +2033,7 @@ DataTable.prototype._renderFilterBar = function(){
               <button type="button" class="ms-all" id="${this.prefix}-msall-${f.key}">Select all</button>
               <button type="button" class="ms-none" id="${this.prefix}-msnone-${f.key}">Clear</button>
             </div>
+            ${values.length > 8 ? `<input type="text" class="ms-search" placeholder="Search…" id="${this.prefix}-mssearch-${f.key}">` : ''}
             <div class="ms-options" id="${this.prefix}-msoptions-${f.key}">
               ${values.map(v=>`<label><input type="checkbox" value="${Utils.escapeHtml(v)}" checked> ${Utils.escapeHtml(v)}</label>`).join('')}
             </div>
@@ -2106,6 +2102,21 @@ DataTable.prototype._wireMultiSelect = function(key){
   optionsWrap.querySelectorAll('input[type=checkbox]').forEach(cb=>{
     cb.addEventListener('change', ()=> self._applyMsFilter(key));
   });
+
+  const searchEl = document.getElementById(this.prefix+'-mssearch-'+key);
+  if(searchEl){
+    // Prevent typing from bubbling up and accidentally closing the panel or
+    // triggering other handlers — this is purely a local visibility filter,
+    // it never touches which checkboxes are actually checked.
+    searchEl.addEventListener('click', e=>e.stopPropagation());
+    searchEl.addEventListener('input', function(){
+      const term = this.value.trim().toLowerCase();
+      optionsWrap.querySelectorAll('label').forEach(label=>{
+        const text = label.textContent.trim().toLowerCase();
+        label.style.display = (!term || text.includes(term)) ? '' : 'none';
+      });
+    });
+  }
 };
 DataTable.prototype._applyMsFilter = function(key){
   const optionsWrap = document.getElementById(this.prefix+'-msoptions-'+key);
@@ -2950,78 +2961,12 @@ M2.renderFullStatusBreakdown = function(filtered){
   </table>`;
 };
 
-/* Flags two specific patterns of wrong disposition, both driven by scanning the
-   actual remark/reason text sales/CRM entered — not just trusting the status label:
-
-   1. "Not Connected" leads whose own remark says contact WAS actually made (shared
-      project details, sent brochure, discussed, etc.) — if contact genuinely
-      happened, "Not Connected" is the wrong disposition for that lead.
-
-   2. Dumped leads (any "(Dump)" status) whose remark mentions a SITE VISIT — a
-      lead who visited the site is a serious buyer signal, so the dump reason
-      needs to be a strong one (budget issue, bought elsewhere, cancelled, etc.);
-      if the remark doesn't ALSO contain one of those strong justifications, it's
-      flagged as needing review rather than assumed valid. */
-const CONTACT_EVIDENCE_RE = /\b(shared|sent|provided|discussed|explained|informed|spoke|spoken|called|connected|forwarded|briefed|walked\s*through)\b/i;
-const SITE_VISIT_RE = /\bsite\s*visit(ed)?\b|\bvisited\s*(the\s*)?site\b/i;
-const STRONG_DUMP_JUSTIFICATION_RE = /\b(budget|not\s*interested|bought|purchased|booked|sold\s*out|elsewhere|cancel|out\s*of\s*(location|budget)|already\s*(bought|purchased|booked)|no\s*response|unreachable|invalid|duplicate|wrong\s*number)\b/i;
-
-M2.renderDispositionCheck = function(leads, allRows){
-  const card = document.getElementById('m2-disposition-card');
-
-  // Check 1: Not Connected leads whose remark suggests contact actually happened
-  const wrongNotConnected = leads.filter(l=>{
-    if(l.statusClass !== 'not_connected') return false;
-    const text = [l.remarks, l.salesRemark].join(' ');
-    return CONTACT_EVIDENCE_RE.test(text);
-  });
-
-  // Check 2: Dumped leads with a site-visit mention but no strong justification in the remark
-  const weakDumpReasons = allRows.filter(r=>{
-    if(!/dump/i.test(r.originalStatus||'')) return false;
-    const text = [r.remarks, r.salesRemark].join(' ');
-    if(!SITE_VISIT_RE.test(text)) return false;
-    return !STRONG_DUMP_JUSTIFICATION_RE.test(text);
-  });
-
-  if(!wrongNotConnected.length && !weakDumpReasons.length){ if(card) card.style.display='none'; return; }
-  if(card) card.style.display = 'block';
-
-  document.getElementById('m2-disposition-headline').innerHTML = `
-    <div class="kpi tone-red clickable" id="m2-kpi-wrongnc"><div class="k-label">Not Connected, but remark shows contact was made</div><div class="k-value">${wrongNotConnected.length}</div></div>
-    <div class="kpi tone-red clickable" id="m2-kpi-weakdump"><div class="k-label">Dumped after a site visit, without a strong reason</div><div class="k-value">${weakDumpReasons.length}</div></div>
-  `;
-
-  const renderList = (elId, rows, cols)=>{
-    const el = document.getElementById(elId);
-    if(!rows.length){ el.innerHTML = '<div class="empty-state">None found.</div>'; return; }
-    el.innerHTML = `<table class="attach-table">
-      <tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr>
-      ${rows.slice(0,200).map(r=>`<tr>${cols.map(c=>`<td>${Utils.escapeHtml(r[c.key]||'')}</td>`).join('')}</tr>`).join('')}
-    </table>${rows.length>200 ? `<div class="mini-note" style="margin-top:8px;">Showing first 200 of ${rows.length} — download the full report below for all of them.</div>` : ''}`;
-  };
-
-  const ncCols = [
-    {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
-    {key:'costCentre', label:'Team Member'}, {key:'remarks', label:'Remark'}, {key:'salesRemark', label:'Sales Remark'}
-  ];
-  const dumpCols = [
-    {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
-    {key:'originalStatus', label:'Status'}, {key:'remarks', label:'Remark'}, {key:'salesRemark', label:'Sales Remark'}
-  ];
-  renderList('m2-disposition-nc-list', wrongNotConnected, ncCols);
-  renderList('m2-disposition-dump-list', weakDumpReasons, dumpCols);
-
-  document.getElementById('m2-dl-wrongnc').onclick = ()=> Utils.downloadExcel(wrongNotConnected, ncCols, 'not_connected_with_contact_evidence.xlsx');
-  document.getElementById('m2-dl-weakdump').onclick = ()=> Utils.downloadExcel(weakDumpReasons, dumpCols, 'dumped_after_site_visit_weak_reason.xlsx');
-};
 
 M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExcluded){
   document.getElementById('m2-report').style.display = 'block';
   M2._excludedCount = excludedCount || 0;
   M2._nonPaidExcluded = nonPaidExcluded || 0;
   M2._costCentreExcluded = costCentreExcluded || 0;
-  M2.renderDispositionCheck(leads, M2._allRows || []);
 
   const columns = [
     {key:'crm', label:'CRM'},
@@ -3255,6 +3200,7 @@ const M3_CRM_FIELDS = [
   {key:'project', label:'Project', required:true},
   {key:'source', label:'Source', required:false},
   {key:'date', label:'Date', required:false},
+  {key:'channel', label:'Channel (optional — if mapped, only "Website" channel rows are counted, since that\'s what corresponds to agency-driven leads)', required:false},
 ];
 
 /* Fields for the "agency sends a per-project summary" mode (e.g. a City-wise
@@ -3275,6 +3221,7 @@ const M3_CRM_SUMMARY_FIELDS = [
   {key:'project', label:'Project', required:true},
   {key:'source', label:'Source (optional)', required:false},
   {key:'date', label:'Date (optional — enables a day-wise CRM lead count breakdown, independent of whether the agency side has dates)', required:false},
+  {key:'channel', label:'Channel (optional — if mapped, only "Website" channel rows are counted, since that\'s what corresponds to agency-driven leads)', required:false},
 ];
 
 /* Matches one agency-reported project name against the CRM's actual project
@@ -3366,12 +3313,12 @@ M3.filterAgencyByTerritory = function(rows, projectKey, targetTerritory){
    Mode the agency file is pre-aggregated totals with no date at all, so a "daily
    gap" comparison isn't possible there, but the CRM side is still raw one-row-
    per-lead data and can be broken down by day on its own. */
-M3.buildCrmDailyBreakdown = function(cMap){
+M3.buildCrmDailyBreakdown = function(cMap, crmRows){
   const card = document.getElementById('m3-crm-daily-card');
   if(!cMap.date){ if(card) card.style.display = 'none'; return; }
 
   const byKey = {};
-  M3.crm.rows.forEach(row=>{
+  (crmRows || M3.crm.rows).forEach(row=>{
     const project = Utils.val(row, cMap.project);
     if(Utils.isBlank(project)) return;
     const source = cMap.source ? (Utils.resolveSource(Utils.val(row, cMap.source)).canonical || Utils.val(row, cMap.source)) : '(not mapped)';
@@ -3415,16 +3362,31 @@ M3.generateSummaryMode = async function(){
 
   const useSource = !!(aMap.source && cMap.source);
 
+  // Same "Website only" channel scoping as raw-data mode — see comment there
+  // for why this matters. Applied here too so both modes stay consistent.
+  let crmRowsForMatching = M3.crm.rows;
+  let channelExcludedCount = 0;
+  if(cMap.channel){
+    const kept = [];
+    M3.crm.rows.forEach(row=>{
+      const ch = Utils.normLoose(Utils.val(row, cMap.channel));
+      if(ch.includes('website')) kept.push(row);
+      else channelExcludedCount++;
+    });
+    crmRowsForMatching = kept;
+  }
+  M3._channelExcludedCount = channelExcludedCount;
+
   // Scope the agency's rows to whichever CRM's territory this CRM file actually belongs
   // to — handles an agency whose own file covers projects for BOTH CRMs mixed together.
-  const crmTerritory = M3.detectCrmTerritory(M3.crm.rows, cMap.project);
+  const crmTerritory = M3.detectCrmTerritory(crmRowsForMatching, cMap.project);
   const territoryResult = M3.filterAgencyByTerritory(M3.agency.rows, aMap.project, crmTerritory);
   const agencyRowsScoped = territoryResult.rows;
   M3._territoryExcludedCount = territoryResult.excludedCount;
   M3._crmTerritory = crmTerritory;
 
   const crmByKey = {};
-  M3.crm.rows.forEach(row=>{
+  crmRowsForMatching.forEach(row=>{
     const project = Utils.val(row, cMap.project);
     if(Utils.isBlank(project)) return;
     const source = useSource ? (Utils.resolveSource(Utils.val(row, cMap.source)).canonical || Utils.val(row, cMap.source)) : '';
@@ -3484,7 +3446,7 @@ M3.generateSummaryMode = async function(){
   });
 
   out.sort((x,y)=> Math.abs(y.gap) - Math.abs(x.gap));
-  M3.buildCrmDailyBreakdown(cMap);
+  M3.buildCrmDailyBreakdown(cMap, crmRowsForMatching);
   M3.buildSummaryReport(out);
 };
 
@@ -3504,6 +3466,7 @@ M3.buildSummaryReport = function(rows){
     <div class="kpi tone-accent"><div class="k-label">CRM actual (matched projects)</div><div class="k-value">${totalReceived}</div></div>
     <div class="kpi tone-red"><div class="k-label">Total gap (claimed − actual)</div><div class="k-value">${totalGap}</div></div>
     <div class="kpi tone-amber"><div class="k-label">Projects with no CRM match</div><div class="k-value">${unmatchedCount}</div></div>
+    ${M3._channelExcludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">CRM rows excluded (not Website channel)</div><div class="k-value">${M3._channelExcludedCount}</div></div>` : ''}
   `;
 
   const byType = {};
@@ -3568,10 +3531,28 @@ M3.generateLeadLevel = async function(){
 
   const useSource = !!(aMap.source && cMap.source);
 
+  // If Channel is mapped, only "Website" channel rows count — other channels
+  // (IVR, WhatsApp, walk-in, etc.) don't correspond to what the agency is
+  // actually driving, so including them would inflate the CRM side and make
+  // the gap comparison inaccurate. Excluded count is surfaced so this scoping
+  // is visible, not a silent filter.
+  let crmRowsForMatching = M3.crm.rows;
+  let channelExcludedCount = 0;
+  if(cMap.channel){
+    const kept = [];
+    M3.crm.rows.forEach(row=>{
+      const ch = Utils.normLoose(Utils.val(row, cMap.channel));
+      if(ch.includes('website')) kept.push(row);
+      else channelExcludedCount++;
+    });
+    crmRowsForMatching = kept;
+  }
+  M3._channelExcludedCount = channelExcludedCount;
+
   // Scope the agency's rows to whichever CRM's territory this CRM file actually belongs
   // to — handles an agency whose own file covers projects for BOTH CRMs mixed together,
   // rather than requiring the person to pre-split their agency file by hand.
-  const crmTerritory = M3.detectCrmTerritory(M3.crm.rows, cMap.project);
+  const crmTerritory = M3.detectCrmTerritory(crmRowsForMatching, cMap.project);
   const territoryResult = M3.filterAgencyByTerritory(M3.agency.rows, aMap.project, crmTerritory);
   const agencyRowsScoped = territoryResult.rows;
   M3._territoryExcludedCount = territoryResult.excludedCount;
@@ -3579,7 +3560,7 @@ M3.generateLeadLevel = async function(){
 
   // CRM side, grouped by (source, project) if source is mapped on both sides, else project alone
   const crmGroups = {};
-  M3.crm.rows.forEach(row=>{
+  crmRowsForMatching.forEach(row=>{
     const project = Utils.val(row, cMap.project);
     if(Utils.isBlank(project)) return;
     const source = useSource ? (Utils.resolveSource(Utils.val(row, cMap.source)).canonical || Utils.val(row, cMap.source)) : '';
@@ -3854,6 +3835,7 @@ M3.buildSimpleReport = function(rows, useSource, useDate){
     <div class="kpi tone-red"><div class="k-label">Total difference</div><div class="k-value">${totalGap}</div></div>
     <div class="kpi tone-amber"><div class="k-label">Projects with no CRM match</div><div class="k-value">${unmatchedCount}</div></div>
     ${M3._territoryExcludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">Agency rows excluded (belong to the other CRM's cities, not ${Utils.escapeHtml(M3._crmTerritory||'this CRM')})</div><div class="k-value">${M3._territoryExcludedCount}</div></div>` : ''}
+    ${M3._channelExcludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">CRM rows excluded (not Website channel)</div><div class="k-value">${M3._channelExcludedCount}</div></div>` : ''}
   `;
 
   const byType = {};
