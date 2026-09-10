@@ -480,6 +480,20 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
 
       <div id="m3-report" style="display:none;">
         <div class="kpi-row" id="m3-kpis"></div>
+        <div class="card" id="m3-crm-daily-card" style="display:none;">
+          <h2>CRM Daily Lead Count <small>Purely from your CRM's own raw data, by day — works even when the agency file has no dates at all (e.g. a pre-summed total sheet)</small></h2>
+          <div class="filter-bar" id="m3crmdaily-filters"></div>
+          <div class="table-wrap"><table class="data" id="m3crmdaily-table"></table></div>
+          <div class="table-foot">
+            <span class="rec-count" id="m3crmdaily-count"></span>
+            <div class="pager" id="m3crmdaily-pager"></div>
+          </div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button class="btn" id="m3crmdaily-clear">Clear filters</button>
+            <button class="btn" id="m3crmdaily-dl-full">Download full Excel</button>
+            <button class="btn btn-primary" id="m3crmdaily-dl-filtered">Download filtered Excel</button>
+          </div>
+        </div>
         <div class="card" id="m3-match-summary-card" style="display:none;">
           <h2>Project name matching</h2>
           <div id="m3-match-summary"></div>
@@ -511,6 +525,11 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
             <button class="btn" id="m3daily-dl-full">Download full Excel</button>
             <button class="btn btn-primary" id="m3daily-dl-filtered">Download filtered Excel</button>
           </div>
+          <div class="btn-row" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);">
+            <button class="btn" id="m3-dl-agency">⬇ Download for Agency Team</button>
+            <button class="btn" id="m3-dl-crm">⬇ Download for CRM Team</button>
+          </div>
+          <div class="mini-note" style="margin-top:6px;">Only includes days with an actual gap — ready to forward as-is, no filtering needed on their end.</div>
         </div>
         <div class="card">
           <h2>Report</h2>
@@ -935,7 +954,7 @@ Utils.STORAGE_KEY = 'lead_control_dashboard_settings_v1';
 
 Utils.DEFAULT_SOURCE_MASTER = [
   {raw:'IN HOUSE WHATSAPP', canonical:'IN HOUSE WHATSAPP', category:'WhatsApp campaign'},
-  {raw:'Digital Marketing',  canonical:'XD',   category:'Meta ads'},
+  {raw:'Digital Marketing',  canonical:'DMXD',   category:'Meta ads'},
   {raw:'Digital Marketing XD', canonical:'DMXD', category:'Meta ads'},
   {raw:'DMXD',                canonical:'DMXD', category:'Meta ads'},
   {raw:'XD',                 canonical:'XD',   category:'Search ads'},
@@ -1995,7 +2014,14 @@ DataTable.prototype._renderFilterBar = function(){
   if(!bar) return;
   let html = `<div class="f-field search"><label>Search</label><input type="text" id="${this.prefix}-search" placeholder="Search all columns…"></div>`;
   this.filterDefs.forEach(f=>{
-    if(f.type === 'daterange'){
+    if(f.type === 'daterangeoverlap'){
+      // Each row spans a range (startKey to endKey) rather than a single date —
+      // used where rows are aggregated over a period (e.g. total leads for a
+      // project across a date span), so filtering means "did this row have any
+      // activity that overlaps the selected window", not "does one date fall in it".
+      html += `<div class="f-field"><label>${Utils.escapeHtml(f.label)} — from</label><input type="date" id="${this.prefix}-f-${f.key}-from"></div>`;
+      html += `<div class="f-field"><label>${Utils.escapeHtml(f.label)} — to</label><input type="date" id="${this.prefix}-f-${f.key}-to"></div>`;
+    } else if(f.type === 'daterange'){
       html += `<div class="f-field"><label>${Utils.escapeHtml(f.label)} — from</label><input type="date" id="${this.prefix}-f-${f.key}-from"></div>`;
       html += `<div class="f-field"><label>${Utils.escapeHtml(f.label)} — to</label><input type="date" id="${this.prefix}-f-${f.key}-to"></div>`;
     } else if(f.type === 'date'){
@@ -2025,6 +2051,13 @@ DataTable.prototype._renderFilterBar = function(){
   const searchEl = document.getElementById(this.prefix+'-search');
   if(searchEl) searchEl.addEventListener('input', ()=>{ self.searchTerm = searchEl.value; self.page=1; self.render(); });
   this.filterDefs.forEach(f=>{
+    if(f.type === 'daterangeoverlap'){
+      const fromEl = document.getElementById(this.prefix+'-f-'+f.key+'-from');
+      const toEl = document.getElementById(this.prefix+'-f-'+f.key+'-to');
+      if(fromEl) fromEl.addEventListener('change', ()=>{ self.filters[f.key+'OverlapFrom'] = fromEl.value; self.page=1; self.render(); });
+      if(toEl) toEl.addEventListener('change', ()=>{ self.filters[f.key+'OverlapTo'] = toEl.value; self.page=1; self.render(); });
+      return;
+    }
     if(f.type === 'daterange'){
       const fromEl = document.getElementById(this.prefix+'-f-'+f.key+'-from');
       const toEl = document.getElementById(this.prefix+'-f-'+f.key+'-to');
@@ -2169,12 +2202,15 @@ DataTable.prototype.updateRows = function(newRows){
 DataTable.prototype._filteredRows = function(){
   let rows = this.rows;
   const dateRangeKeys = this.filterDefs.filter(f=>f.type==='daterange').map(f=>f.key);
+  const overlapKeys = this.filterDefs.filter(f=>f.type==='daterangeoverlap').map(f=>f.key);
   Object.keys(this.filters).forEach(k=>{
     const v = this.filters[k];
     if(v===undefined || v===null || v==='') return;
     if(dateRangeKeys.includes(k)) return; // handled below
     if(k.endsWith('From') && dateRangeKeys.includes(k.slice(0,-4))) return;
     if(k.endsWith('To') && dateRangeKeys.includes(k.slice(0,-2))) return;
+    if(k.endsWith('OverlapFrom') && overlapKeys.includes(k.slice(0,-11))) return;
+    if(k.endsWith('OverlapTo') && overlapKeys.includes(k.slice(0,-9))) return;
     if(Array.isArray(v)) rows = rows.filter(r=>v.includes(Utils.norm(r[k])));
     else rows = rows.filter(r=>Utils.norm(r[k]) === v);
   });
@@ -2183,6 +2219,15 @@ DataTable.prototype._filteredRows = function(){
     const to = this.filters[key+'To'];
     if(from) rows = rows.filter(r=>{ const d=Utils.toDateSafe(r[key]); return d && d >= Utils.toDateSafe(from); });
     if(to) rows = rows.filter(r=>{ const d=Utils.toDateSafe(r[key]); return d && d <= Utils.toDateSafe(to); });
+  });
+  // Overlap check: a row (spanning key+'Start' to key+'End') passes if its span
+  // overlaps the selected window at all — not requiring one single date to fall
+  // inside it, since these rows represent an aggregated period, not one date.
+  overlapKeys.forEach(key=>{
+    const from = this.filters[key+'OverlapFrom'];
+    const to = this.filters[key+'OverlapTo'];
+    if(from) rows = rows.filter(r=>{ const end=Utils.toDateSafe(r[key+'End']); return end && end >= Utils.toDateSafe(from); });
+    if(to) rows = rows.filter(r=>{ const start=Utils.toDateSafe(r[key+'Start']); return start && start <= Utils.toDateSafe(to); });
   });
   if(this.searchTerm && this.searchTerm.trim()!==''){
     const term = this.searchTerm.trim().toLowerCase();
@@ -2196,6 +2241,7 @@ DataTable.prototype._filteredRows = function(){
 DataTable.prototype._rowMatchesFilters = function(r, excludeKeys){
   excludeKeys = excludeKeys || [];
   const dateRangeKeys = this.filterDefs.filter(f=>f.type==='daterange').map(f=>f.key);
+  const overlapKeys = this.filterDefs.filter(f=>f.type==='daterangeoverlap').map(f=>f.key);
   for(const k of Object.keys(this.filters)){
     if(excludeKeys.includes(k)) continue;
     const v = this.filters[k];
@@ -2203,6 +2249,8 @@ DataTable.prototype._rowMatchesFilters = function(r, excludeKeys){
     if(dateRangeKeys.includes(k)) continue;
     if(k.endsWith('From') && dateRangeKeys.includes(k.slice(0,-4))) continue;
     if(k.endsWith('To') && dateRangeKeys.includes(k.slice(0,-2))) continue;
+    if(k.endsWith('OverlapFrom') && overlapKeys.includes(k.slice(0,-11))) continue;
+    if(k.endsWith('OverlapTo') && overlapKeys.includes(k.slice(0,-9))) continue;
     if(Array.isArray(v)){ if(!v.includes(Utils.norm(r[k]))) return false; }
     else if(Utils.norm(r[k]) !== v) return false;
   }
@@ -2212,6 +2260,13 @@ DataTable.prototype._rowMatchesFilters = function(r, excludeKeys){
     const to = this.filters[key+'To'];
     if(from){ const d=Utils.toDateSafe(r[key]); if(!(d && d >= Utils.toDateSafe(from))) return false; }
     if(to){ const d=Utils.toDateSafe(r[key]); if(!(d && d <= Utils.toDateSafe(to))) return false; }
+  }
+  for(const key of overlapKeys){
+    if(excludeKeys.includes(key)) continue;
+    const from = this.filters[key+'OverlapFrom'];
+    const to = this.filters[key+'OverlapTo'];
+    if(from){ const end=Utils.toDateSafe(r[key+'End']); if(!(end && end >= Utils.toDateSafe(from))) return false; }
+    if(to){ const start=Utils.toDateSafe(r[key+'Start']); if(!(start && start <= Utils.toDateSafe(to))) return false; }
   }
   if(this.searchTerm && this.searchTerm.trim()!==''){
     const term = this.searchTerm.trim().toLowerCase();
@@ -3220,6 +3275,7 @@ const M3_AGENCY_SUMMARY_FIELDS = [
 const M3_CRM_SUMMARY_FIELDS = [
   {key:'project', label:'Project', required:true},
   {key:'source', label:'Source (optional)', required:false},
+  {key:'date', label:'Date (optional — enables a day-wise CRM lead count breakdown, independent of whether the agency side has dates)', required:false},
 ];
 
 /* Matches one agency-reported project name against the CRM's actual project
@@ -3306,6 +3362,50 @@ M3.filterAgencyByTerritory = function(rows, projectKey, targetTerritory){
   return {rows: kept, excludedCount};
 };
 
+/* A day-wise lead count purely from the CRM's own raw data — Project, Source,
+   Date, count. Deliberately independent of the agency side entirely: in Summary
+   Mode the agency file is pre-aggregated totals with no date at all, so a "daily
+   gap" comparison isn't possible there, but the CRM side is still raw one-row-
+   per-lead data and can be broken down by day on its own. */
+M3.buildCrmDailyBreakdown = function(cMap){
+  const card = document.getElementById('m3-crm-daily-card');
+  if(!cMap.date){ if(card) card.style.display = 'none'; return; }
+
+  const byKey = {};
+  M3.crm.rows.forEach(row=>{
+    const project = Utils.val(row, cMap.project);
+    if(Utils.isBlank(project)) return;
+    const source = cMap.source ? (Utils.resolveSource(Utils.val(row, cMap.source)).canonical || Utils.val(row, cMap.source)) : '(not mapped)';
+    const d = Utils.toDateSafe(Utils.val(row, cMap.date));
+    if(!d) return;
+    const dateLabel = Utils.formatDateShort(d);
+    const key = project+'||'+source+'||'+dateLabel;
+    if(!byKey[key]) byKey[key] = {project, source, date: dateLabel, dateRaw: d.toISOString().slice(0,10), count:0};
+    byKey[key].count++;
+  });
+
+  const rows = Object.values(byKey).sort((a,b)=> b.dateRaw.localeCompare(a.dateRaw) || b.count - a.count);
+  if(!rows.length){ if(card) card.style.display = 'none'; return; }
+  if(card) card.style.display = 'block';
+
+  const columns = [
+    {key:'date', label:'Date'},
+    {key:'project', label:'Project'},
+    {key:'source', label:'Source'},
+    {key:'count', label:'Leads This Day'},
+  ];
+  const filterDefs = [
+    {key:'dateRaw', label:'Date', type:'daterange'},
+    {key:'project', label:'Project'},
+    {key:'source', label:'Source'},
+    {key:'count', label:'Leads This Day'},
+  ];
+  new DataTable({
+    prefix:'m3crmdaily', columns:columns, rows:rows, filterDefs:filterDefs,
+    filename:'crm_daily_lead_count.xlsx'
+  });
+};
+
 M3.generateSummaryMode = async function(){
   const aDetected = Utils.detectColumns(M3.agency.headers, M3_AGENCY_SUMMARY_FIELDS.map(f=>f.key), M3.agency.rows);
   const aMap = await Utils.resolveMapping('Map columns — Agency Summary File','Confirm which column holds each field. Source is optional — map it if your sheet has one, to keep matching scoped to the same source.', M3_AGENCY_SUMMARY_FIELDS, M3.agency.headers, aDetected);
@@ -3385,6 +3485,7 @@ M3.generateSummaryMode = async function(){
   });
 
   out.sort((x,y)=> Math.abs(y.gap) - Math.abs(x.gap));
+  M3.buildCrmDailyBreakdown(cMap);
   M3.buildSummaryReport(out);
 };
 
@@ -3527,6 +3628,7 @@ M3.generateLeadLevel = async function(){
     else status = 'REVIEW REQUIRED';
 
     let month = '', duration = '';
+    let dateRangeStart = '', dateRangeEnd = '';
     if(useDate){
       const allDates = g.dates.concat(...match.matches.map(m=>m.dates||[])).sort((a,b)=>a-b);
       if(allDates.length){
@@ -3535,12 +3637,14 @@ M3.generateLeadLevel = async function(){
           ? Utils.MONTH_ABBR[first.getMonth()]+'-'+String(first.getFullYear()).slice(-2)
           : Utils.MONTH_ABBR[first.getMonth()]+'-'+String(first.getFullYear()).slice(-2)+' to '+Utils.MONTH_ABBR[last.getMonth()]+'-'+String(last.getFullYear()).slice(-2);
         duration = Utils.formatDateShort(first) + ' to ' + Utils.formatDateShort(last);
+        dateRangeStart = first.toISOString().slice(0,10);
+        dateRangeEnd = last.toISOString().slice(0,10);
       }
     }
 
     out.push({
       source: g.source || '(not mapped)', project: g.project, matchedCrmProject: matchedNames || '(none found)', matchType: match.type,
-      generated: g.generated, received, gap, status, month, duration
+      generated: g.generated, received, gap, status, month, duration, dateRangeStart, dateRangeEnd
     });
   });
 
@@ -3627,20 +3731,24 @@ M3.buildDailyGapReport = function(aMap, cMap, agencyGroups, crmGroups, agencyMat
     const match = agencyMatches[key];
     const matchedProjects = match.matches.map(m=>m.project);
 
-    // Every date this project+source appears on, from either side
-    const allDates = new Set();
-    g.dates.forEach(d=> allDates.add(dateLabel(d)));
+    // Every date this project+source appears on, from either side — tracked as
+    // label -> raw Date so the report can both DISPLAY a friendly label and
+    // FILTER by a real date range (a formatted label alone isn't reliably
+    // re-parseable back into a date).
+    const allDatesMap = new Map();
+    g.dates.forEach(d=> allDatesMap.set(dateLabel(d), d));
     matchedProjects.forEach(mp=>{
       const crmG = crmGroups[g.source+'||'+mp];
-      if(crmG) crmG.dates.forEach(d=> allDates.add(dateLabel(d)));
+      if(crmG) crmG.dates.forEach(d=> allDatesMap.set(dateLabel(d), d));
     });
 
-    allDates.forEach(dl=>{
+    allDatesMap.forEach((dateObj, dl)=>{
       const agencyCount = agencyDateCounts[g.source+'||'+g.project+'||'+dl] || 0;
       let crmCount = 0;
       matchedProjects.forEach(mp=>{ crmCount += crmDateCounts[g.source+'||'+mp+'||'+dl] || 0; });
       dailyRows.push({
-        date: dl, source: g.source || '(not mapped)', project: g.project,
+        date: dl, dateRaw: dateObj.toISOString().slice(0,10),
+        source: g.source || '(not mapped)', project: g.project,
         matchedCrmProject: matchedProjects.join(', ') || '(none found)',
         agencyCount, crmCount, diff: agencyCount - crmCount
       });
@@ -3660,7 +3768,7 @@ M3.buildDailyGapReport = function(aMap, cMap, agencyGroups, crmGroups, agencyMat
     {key:'diff', label:'Difference'},
   ];
   const filterDefs = [
-    {key:'date', label:'Date'},
+    {key:'dateRaw', label:'Date', type:'daterange'},
     {key:'project', label:'Project'},
     {key:'matchedCrmProject', label:'Matched CRM Project'},
     {key:'agencyCount', label:'Lead Claimed from Agency'},
@@ -3676,6 +3784,58 @@ M3.buildDailyGapReport = function(aMap, cMap, agencyGroups, crmGroups, agencyMat
     prefix:'m3daily', columns:columns, rows:dailyRows, filterDefs:filterDefs,
     filename:'daily_agency_crm_gap.xlsx'
   });
+
+  M3._dailyGapRows = dailyRows;
+  const agencyBtn = document.getElementById('m3-dl-agency');
+  const crmBtn = document.getElementById('m3-dl-crm');
+  if(agencyBtn) agencyBtn.onclick = ()=> M3.exportDailyGapForTeam('agency');
+  if(crmBtn) crmBtn.onclick = ()=> M3.exportDailyGapForTeam('crm');
+};
+
+/* Same underlying daily gap data, reframed for whichever team is actually going
+   to act on it — an agency needs to see where THEIR reported numbers don't
+   reconcile (a claim they should double check), while the CRM team needs to see
+   which of the agency's claimed leads never made it into their own system (a
+   logging gap to go find). Only rows with an actual difference are included —
+   a perfectly matched day needs no one's attention. */
+M3.exportDailyGapForTeam = function(team){
+  const rows = (M3._dailyGapRows || []).filter(r=>r.diff !== 0);
+  if(!rows.length){ Utils.toast('No gap rows to export — everything currently reconciles.'); return; }
+
+  if(team === 'agency'){
+    const columns = [
+      {key:'date', label:'Date'},
+      {key:'source', label:'Source'},
+      {key:'project', label:'Project'},
+      {key:'agencyCount', label:'Leads You Reported'},
+      {key:'crmCount', label:'Leads Found In Our CRM'},
+      {key:'diff', label:'Difference'},
+      {key:'note', label:'Note'},
+    ];
+    const shaped = rows.map(r=>({
+      ...r,
+      note: r.diff > 0
+        ? `You reported ${r.diff} more lead(s) than we can find in our CRM for this day — please share lead details (name/number) so we can verify or re-check our system.`
+        : `Our CRM shows ${Math.abs(r.diff)} more lead(s) than you've reported — please confirm these came from you, in case they were misattributed.`
+    }));
+    Utils.downloadExcel(shaped, columns, 'agency_lead_gap_for_review.xlsx');
+  } else {
+    const columns = [
+      {key:'date', label:'Date'},
+      {key:'source', label:'Source'},
+      {key:'project', label:'Project'},
+      {key:'agencyCount', label:'Leads Agency Claims They Sent'},
+      {key:'crmCount', label:'Leads Currently Logged In CRM'},
+      {key:'diff', label:'Missing Count'},
+      {key:'note', label:'Note'},
+    ];
+    const shaped = rows.filter(r=>r.diff > 0).map(r=>({
+      ...r,
+      note: `Agency claims ${r.diff} lead(s) sent on this day that aren't showing up in CRM for this project/source — please check for untracked, duplicate, or misfiled entries.`
+    }));
+    if(!shaped.length){ Utils.toast('No missing-lead rows to export for the CRM team — every claimed lead is accounted for.'); return; }
+    Utils.downloadExcel(shaped, columns, 'crm_missing_leads_for_review.xlsx');
+  }
 };
 
 M3.buildSimpleReport = function(rows, useSource, useDate){
@@ -3724,6 +3884,7 @@ M3.buildSimpleReport = function(rows, useSource, useDate){
     columns.push({key:'month', label:'Month'});
     columns.push({key:'duration', label:'Date Range'});
     filterDefs.push({key:'month', label:'Month'});
+    filterDefs.push({key:'dateRange', label:'Date', type:'daterangeoverlap'});
   }
   if(useSource){
     columns.unshift({key:'source', label:'Source'});
