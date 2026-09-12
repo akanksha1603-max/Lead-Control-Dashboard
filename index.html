@@ -466,12 +466,26 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         </div>
         <div class="btn-row" style="margin-top:14px;">
           <button class="btn btn-primary" id="m3-generate" disabled>Generate report</button>
-          <span class="mini-note">Both sides are required.</span>
+          <span class="mini-note">A CRM file is required. Agency file is optional — without it, you'll get a CRM-only filtered view with no gap comparison.</span>
         </div>
       </div>
 
       <div id="m3-report" style="display:none;">
         <div class="kpi-row" id="m3-kpis"></div>
+        <div class="card" id="m3-crm-only-card" style="display:none;">
+          <h2>CRM Data <small>No agency file was provided — this is purely your CRM's own leads, filterable, with no gap comparison</small></h2>
+          <div class="filter-bar" id="m3crmonly-filters"></div>
+          <div class="table-wrap"><table class="data" id="m3crmonly-table"></table></div>
+          <div class="table-foot">
+            <span class="rec-count" id="m3crmonly-count"></span>
+            <div class="pager" id="m3crmonly-pager"></div>
+          </div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button class="btn" id="m3crmonly-clear">Clear filters</button>
+            <button class="btn" id="m3crmonly-dl-full">Download full Excel</button>
+            <button class="btn btn-primary" id="m3crmonly-dl-filtered">Download filtered Excel</button>
+          </div>
+        </div>
         <div class="card" id="m3-crm-daily-card" style="display:none;">
           <h2>CRM Daily Lead Count <small>Purely from your CRM's own raw data, by day — works even when the agency file has no dates at all (e.g. a pre-summed total sheet)</small></h2>
           <div class="filter-bar" id="m3crmdaily-filters"></div>
@@ -951,6 +965,7 @@ Utils.DEFAULT_SOURCE_MASTER = [
   {raw:'DMXD',                canonical:'DMXD', category:'Meta ads'},
   {raw:'XD',                 canonical:'XD',   category:'Search ads'},
   {raw:'XDD',                canonical:'XD',   category:'Google Demand Gen'},
+  {raw:'Developer Lead - XDD', canonical:'XD', category:'Google Demand Gen'},
   {raw:'XDPL',                canonical:'XD',   category:'Google Platter'},
   {raw:'XD & XDD',            canonical:'XD',   category:'Search ads'},
   {raw:'Mcube XD',            canonical:'Mcube XD', category:'IVR'},
@@ -969,7 +984,7 @@ Utils.DEFAULT_SOURCE_MASTER = [
   {raw:'AJN',                  canonical:'Aajneeti', category:'Meta ads'},
   {raw:'Mcube AJN',            canonical:'Mcube AJN', category:'IVR'},
   {raw:'99 Acres',             canonical:'99 Acres', category:'property portal'},
-  {raw:'GRAF META',            canonical:'GRAFF', category:'Meta ads'},
+  {raw:'GRAFF META',            canonical:'GRAFFINO', category:'Meta ads'},
   {raw:'WOLF META',            canonical:'Wolf Media', category:'Meta'},
   {raw:'PPC',                  canonical:'Marasim', category:'PPC ads'},
   {raw:'META WOLF',            canonical:'Wolf Media', category:'Meta'}
@@ -2023,7 +2038,15 @@ DataTable.prototype._renderFilterBar = function(){
       // A search box at the top narrows the visible checkboxes (not the actual
       // selection) once a field has enough distinct values that scrolling to find
       // one by eye becomes impractical — e.g. a Project filter with 100+ names.
-      const values = Array.from(new Set(this.rows.map(r=>Utils.norm(r[f.key])).filter(v=>v!==''))).sort();
+      //
+      // type:'multiincludes' is for a field holding SEVERAL comma-joined values per
+      // row (e.g. subSource: "GT, GTPL, ND" when several raw codes roll up into one
+      // canonical Source) — options are every INDIVIDUAL value across all rows, and
+      // a row matches if ANY of its own values are selected, not the whole string.
+      const isMultiIncludes = f.type === 'multiincludes';
+      const values = isMultiIncludes
+        ? Array.from(new Set(this.rows.flatMap(r=>Utils.norm(r[f.key]).split(',').map(s=>s.trim())).filter(v=>v!==''))).sort()
+        : Array.from(new Set(this.rows.map(r=>Utils.norm(r[f.key])).filter(v=>v!==''))).sort();
       html += `<div class="f-field ms-field">
         <label>${Utils.escapeHtml(f.label)}</label>
         <div class="ms-control" id="${this.prefix}-ms-${f.key}">
@@ -2214,6 +2237,7 @@ DataTable.prototype._filteredRows = function(){
   let rows = this.rows;
   const dateRangeKeys = this.filterDefs.filter(f=>f.type==='daterange').map(f=>f.key);
   const overlapKeys = this.filterDefs.filter(f=>f.type==='daterangeoverlap').map(f=>f.key);
+  const includesKeys = this.filterDefs.filter(f=>f.type==='multiincludes').map(f=>f.key);
   Object.keys(this.filters).forEach(k=>{
     const v = this.filters[k];
     if(v===undefined || v===null || v==='') return;
@@ -2222,6 +2246,15 @@ DataTable.prototype._filteredRows = function(){
     if(k.endsWith('To') && dateRangeKeys.includes(k.slice(0,-2))) return;
     if(k.endsWith('OverlapFrom') && overlapKeys.includes(k.slice(0,-11))) return;
     if(k.endsWith('OverlapTo') && overlapKeys.includes(k.slice(0,-9))) return;
+    if(includesKeys.includes(k) && Array.isArray(v)){
+      // A row's field is itself comma-joined ("GT, GTPL, ND") — matches if ANY of
+      // its own values are in the selected set, not the whole joined string.
+      rows = rows.filter(r=>{
+        const rowValues = Utils.norm(r[k]).split(',').map(s=>s.trim());
+        return rowValues.some(rv=>v.includes(rv));
+      });
+      return;
+    }
     if(Array.isArray(v)) rows = rows.filter(r=>v.includes(Utils.norm(r[k])));
     else rows = rows.filter(r=>Utils.norm(r[k]) === v);
   });
@@ -2253,6 +2286,7 @@ DataTable.prototype._rowMatchesFilters = function(r, excludeKeys){
   excludeKeys = excludeKeys || [];
   const dateRangeKeys = this.filterDefs.filter(f=>f.type==='daterange').map(f=>f.key);
   const overlapKeys = this.filterDefs.filter(f=>f.type==='daterangeoverlap').map(f=>f.key);
+  const includesKeys = this.filterDefs.filter(f=>f.type==='multiincludes').map(f=>f.key);
   for(const k of Object.keys(this.filters)){
     if(excludeKeys.includes(k)) continue;
     const v = this.filters[k];
@@ -2262,6 +2296,11 @@ DataTable.prototype._rowMatchesFilters = function(r, excludeKeys){
     if(k.endsWith('To') && dateRangeKeys.includes(k.slice(0,-2))) continue;
     if(k.endsWith('OverlapFrom') && overlapKeys.includes(k.slice(0,-11))) continue;
     if(k.endsWith('OverlapTo') && overlapKeys.includes(k.slice(0,-9))) continue;
+    if(includesKeys.includes(k) && Array.isArray(v)){
+      const rowValues = Utils.norm(r[k]).split(',').map(s=>s.trim());
+      if(!rowValues.some(rv=>v.includes(rv))) return false;
+      continue;
+    }
     if(Array.isArray(v)){ if(!v.includes(Utils.norm(r[k]))) return false; }
     else if(Utils.norm(r[k]) !== v) return false;
   }
@@ -2285,7 +2324,40 @@ DataTable.prototype._rowMatchesFilters = function(r, excludeKeys){
   }
   return true;
 };
+/* Multi-value filters (type:'multiincludes', e.g. Sub Source) should only offer
+   choices that are actually reachable given whatever OTHER filters are currently
+   active — selecting Source=GTF should narrow Sub Source down to just GTF's own
+   raw codes, not still list every other source's codes too. Runs on every
+   render since any OTHER filter changing can change what's reachable here. */
+DataTable.prototype._updateCascadingOptions = function(){
+  const self = this;
+  this.filterDefs.forEach(f=>{
+    if(f.type !== 'multiincludes') return;
+    const scopedRows = this.rows.filter(r => self._rowMatchesFilters(r, [f.key]));
+    const values = Array.from(new Set(scopedRows.flatMap(r=>Utils.norm(r[f.key]).split(',').map(s=>s.trim())).filter(v=>v!==''))).sort();
+    const valuesKey = values.join('|');
+
+    if(!this._lastCascadeKey) this._lastCascadeKey = {};
+    if(this._lastCascadeKey[f.key] === valuesKey) return; // reachable set hasn't changed — leave the person's selection alone
+    this._lastCascadeKey[f.key] = valuesKey;
+
+    const optionsWrap = document.getElementById(this.prefix+'-msoptions-'+f.key);
+    if(!optionsWrap) return;
+    // The reachable set just changed — reset to "everything currently reachable
+    // selected" rather than trying to carry over a selection that may no longer
+    // make sense against the new list.
+    optionsWrap.innerHTML = values.map(v=>`<label><input type="checkbox" value="${Utils.escapeHtml(v)}" checked> ${Utils.escapeHtml(v)}</label>`).join('');
+    optionsWrap.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+      cb.addEventListener('change', ()=> self._applyMsFilter(f.key));
+    });
+    delete this.filters[f.key]; // "all" — matches every checkbox starting checked
+    const toggle = document.getElementById(this.prefix+'-mstoggle-'+f.key);
+    if(toggle) toggle.textContent = 'All';
+  });
+};
+
 DataTable.prototype.render = function(){
+  this._updateCascadingOptions();
   const filtered = this._filteredRows();
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / this.pageSize));
@@ -2968,6 +3040,14 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
   M2._nonPaidExcluded = nonPaidExcluded || 0;
   M2._costCentreExcluded = costCentreExcluded || 0;
 
+  // "New" and "Not Connected" as two separate columns instead of one combined
+  // Status column — each lead only ever fills in ONE of these (a lead is either
+  // New or Not Connected, never both), the other stays blank for that row.
+  leads.forEach(l=>{
+    l.newMark = l.statusClass === 'new' ? '✓' : '';
+    l.notConnectedMark = l.statusClass === 'not_connected' ? '✓' : '';
+  });
+
   const columns = [
     {key:'crm', label:'CRM'},
     {key:'areaCostCentre', label:'Cost Centre Person (Area)'},
@@ -2976,7 +3056,8 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
     {key:'channel', label:'Channel'},
     {key:'salesHead', label:'Sales Head'},
     {key:'costCentre', label:'Team Member (Owner)'},
-    {key:'statusLabel', label:'Status'},
+    {key:'newMark', label:'New'},
+    {key:'notConnectedMark', label:'Not Connected'},
     {key:'daysInStatus', label:'Days Since Assigned'},
     {key:'project', label:'Project', wrap:true},
     {key:'remarks', label:'Categorized Reason', wrap:true},
@@ -3021,33 +3102,33 @@ M2.renderSummaries = function(leads){
   M2._allFilteredLeads = leads; // the detail table's current filtered set — pivot rows are always derived from this
   M2.computeAndRenderKpisAndBreakdowns(leads);
 
-  // ---- The one consolidated report: Cost Centre → Team Member → Source → Status → Count ----
-  // Long format (one row per Status, not two count columns) so New/Not Connected is a real
-  // filterable column — same multi-select filter behavior as every other column here.
+  // ---- The one consolidated report: Cost Centre → Team Member → Source, with New and
+  // Not Connected as separate count columns side by side (not one Status column with
+  // two rows per combination) — easier to scan both numbers for the same person/source at once. ----
   const pivotMap = {};
   leads.forEach(l=>{
-    const key = [l.areaCostCentre, l.costCentre, l.source, l.statusLabel].join('||');
+    const key = [l.areaCostCentre, l.costCentre, l.source].join('||');
     if(!pivotMap[key]) pivotMap[key] = {
       areaCostCentre: l.areaCostCentre, costCentre: l.costCentre, source: l.source, channel: l.channel,
-      statusLabel: l.statusLabel, count:0
+      newCount:0, notConnectedCount:0
     };
-    pivotMap[key].count++;
+    if(l.statusClass==='new') pivotMap[key].newCount++;
+    else if(l.statusClass==='not_connected') pivotMap[key].notConnectedCount++;
   });
-  const pivotRows = Object.values(pivotMap).sort((a,b)=>b.count-a.count);
+  const pivotRows = Object.values(pivotMap).sort((a,b)=>(b.newCount+b.notConnectedCount)-(a.newCount+a.notConnectedCount));
   const pivotColumns = [
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
     {key:'costCentre', label:'Team Member'},
     {key:'source', label:'Source'},
     {key:'channel', label:'Channel'},
-    {key:'statusLabel', label:'Status'},
-    {key:'count', label:'Count'},
+    {key:'newCount', label:'New'},
+    {key:'notConnectedCount', label:'Not Connected'},
   ];
   const pivotFilterDefs = [
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
     {key:'costCentre', label:'Team Member'},
     {key:'source', label:'Source'},
     {key:'channel', label:'Channel'},
-    {key:'statusLabel', label:'New / Not Connected'},
   ];
 
   if(!M2.summaryTable){
@@ -3056,13 +3137,13 @@ M2.renderSummaries = function(leads){
     // is different now, not just re-filtered.
     M2.summaryTable = new DataTable({
       prefix:'m2sum', columns:pivotColumns, rows:pivotRows, filterDefs:pivotFilterDefs,
-      filename:'cost_centre_team_source_summary.xlsx', pageSize:50, totalColumns:['count'],
+      filename:'cost_centre_team_source_summary.xlsx', pageSize:50, totalColumns:['newCount','notConnectedCount'],
       onChange: function(filteredPivotRows){
         // The pivot's OWN filter changed (not the detail table) — reconstruct which underlying
         // leads that corresponds to, and refresh just the KPI row/breakdowns to match, WITHOUT
         // rebuilding this table itself (that would wipe out the filter the person just set).
-        const allowedKeys = new Set(filteredPivotRows.map(r=>[r.areaCostCentre, r.costCentre, r.source, r.statusLabel].join('||')));
-        const matchingLeads = M2._allFilteredLeads.filter(l=> allowedKeys.has([l.areaCostCentre, l.costCentre, l.source, l.statusLabel].join('||')));
+        const allowedKeys = new Set(filteredPivotRows.map(r=>[r.areaCostCentre, r.costCentre, r.source].join('||')));
+        const matchingLeads = M2._allFilteredLeads.filter(l=> allowedKeys.has([l.areaCostCentre, l.costCentre, l.source].join('||')));
         M2.computeAndRenderKpisAndBreakdowns(matchingLeads);
         M2.renderFullStatusBreakdown(M2.getFilteredAllRows());
       }
@@ -3188,7 +3269,9 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 
 M3._checkReady = function(){
-  document.getElementById('m3-generate').disabled = !(M3.agency && M3.crm);
+  // Agency file is now optional — CRM alone is enough to run a CRM-only view
+  // (just the CRM's own data, filtered/browsable, no agency comparison at all).
+  document.getElementById('m3-generate').disabled = !M3.crm;
 };
 
 const M3_AGENCY_FIELDS = [
@@ -3266,9 +3349,73 @@ M3.matchProject = function(agencyProjectName, crmProjectTotals){
 };
 
 M3.generate = async function(){
+  // No agency file at all — just the CRM's own data, filtered/browsable, without
+  // any gap comparison (there's nothing to compare against without an agency side).
+  if(!M3.agency) return M3.generateCrmOnly();
   const summaryMode = !!(document.getElementById('m3-agency-summary-toggle') && document.getElementById('m3-agency-summary-toggle').checked);
   if(summaryMode) return M3.generateSummaryMode();
   return M3.generateLeadLevel();
+};
+
+/* CRM-only mode: no agency comparison, just the CRM's own raw data — a project/
+   source/channel-filterable table, plus the day-wise breakdown if Date is mapped.
+   For when the goal is simply "let me look at my own CRM numbers" rather than
+   reconciling against what an agency claims to have delivered. */
+M3.generateCrmOnly = async function(){
+  const cDetected = Utils.detectColumns(M3.crm.headers, M3_CRM_FIELDS.map(f=>f.key), M3.crm.rows);
+  const cMap = await Utils.resolveMapping('Map columns — CRM Data','Confirm which column holds each field. No agency file is needed for this — you\'ll get your CRM\'s own data, filterable, without any gap comparison.', M3_CRM_FIELDS, M3.crm.headers, cDetected);
+  if(!cMap) return;
+
+  document.getElementById('m3-report').style.display = 'block';
+  document.getElementById('m3-kpis').innerHTML = `
+    <div class="kpi tone-accent"><div class="k-label">Total CRM leads</div><div class="k-value">${M3.crm.rows.length}</div></div>
+  `;
+  // Hide the gap-comparison-specific cards entirely — there's no agency data to compare against
+  ['m3-match-summary-card','m3-agency-gen-card','m3-daily-gap-card'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display = 'none';
+  });
+  const mainCard = document.getElementById('m3-table') ? document.getElementById('m3-table').closest('.card') : null;
+  if(mainCard) mainCard.style.display = 'none';
+
+  M3.buildCrmDailyBreakdown(cMap, M3.crm.rows);
+
+  // A simple, filterable view of the CRM's own raw rows — Project/Source/Channel/
+  // Date, one row per lead, no aggregation at all.
+  const rows = M3.crm.rows.map(row=>{
+    const sourceRaw = cMap.source ? Utils.val(row, cMap.source) : '';
+    const resolved = cMap.source ? Utils.resolveSource(sourceRaw) : null;
+    const d = cMap.date ? Utils.toDateSafe(Utils.val(row, cMap.date)) : null;
+    return {
+      project: Utils.val(row, cMap.project),
+      source: resolved ? (resolved.canonical || sourceRaw) : '',
+      subSource: cMap.source && !Utils.isBlank(sourceRaw) ? Utils.norm(sourceRaw) : '',
+      channel: cMap.channel ? Utils.val(row, cMap.channel) : '',
+      date: d ? Utils.formatDateShort(d) : '',
+      dateRaw: d ? d.toISOString().slice(0,10) : '',
+      leadCount: 1, // constant 1 per row — summed below to show a running Total of however many leads are currently filtered
+    };
+  });
+  const columns = [
+    {key:'project', label:'Project'},
+    {key:'source', label:'Source'},
+    {key:'subSource', label:'Sub Source'},
+    {key:'channel', label:'Channel'},
+    {key:'date', label:'Date'},
+    {key:'leadCount', label:'Leads'},
+  ];
+  const filterDefs = [
+    {key:'project', label:'Project'},
+    {key:'source', label:'Source'},
+    {key:'subSource', label:'Sub Source', type:'multiincludes'},
+    {key:'channel', label:'Channel'},
+  ];
+  if(cMap.date) filterDefs.unshift({key:'dateRaw', label:'Date', type:'daterange'});
+  const card = document.getElementById('m3-crm-only-card');
+  if(card) card.style.display = 'block';
+  new DataTable({
+    prefix:'m3crmonly', columns:columns, rows:rows, filterDefs:filterDefs,
+    filename:'crm_data_filtered.xlsx', totalColumns:['leadCount']
+  });
 };
 
 /* ---- Mode A: agency sends a per-project summary sheet with a pre-computed count ---- */
@@ -3321,16 +3468,21 @@ M3.buildCrmDailyBreakdown = function(cMap, crmRows){
   (crmRows || M3.crm.rows).forEach(row=>{
     const project = Utils.val(row, cMap.project);
     if(Utils.isBlank(project)) return;
-    const source = cMap.source ? (Utils.resolveSource(Utils.val(row, cMap.source)).canonical || Utils.val(row, cMap.source)) : '(not mapped)';
+    const sourceRaw = cMap.source ? Utils.val(row, cMap.source) : '';
+    const source = cMap.source ? (Utils.resolveSource(sourceRaw).canonical || sourceRaw) : '(not mapped)';
     const d = Utils.toDateSafe(Utils.val(row, cMap.date));
     if(!d) return;
     const dateLabel = Utils.formatDateShort(d);
     const key = project+'||'+source+'||'+dateLabel;
-    if(!byKey[key]) byKey[key] = {project, source, date: dateLabel, dateRaw: d.toISOString().slice(0,10), count:0};
+    if(!byKey[key]) byKey[key] = {project, source, date: dateLabel, dateRaw: d.toISOString().slice(0,10), count:0, subSourceSet:new Set()};
     byKey[key].count++;
+    if(cMap.source && !Utils.isBlank(sourceRaw)) byKey[key].subSourceSet.add(Utils.norm(sourceRaw));
   });
 
-  const rows = Object.values(byKey).sort((a,b)=> b.dateRaw.localeCompare(a.dateRaw) || b.count - a.count);
+  const rows = Object.values(byKey).map(r=>({
+    project:r.project, source:r.source, date:r.date, dateRaw:r.dateRaw, count:r.count,
+    subSource: Array.from(r.subSourceSet).sort().join(', ') || '(not mapped)'
+  })).sort((a,b)=> b.dateRaw.localeCompare(a.dateRaw) || b.count - a.count);
   if(!rows.length){ if(card) card.style.display = 'none'; return; }
   if(card) card.style.display = 'block';
 
@@ -3338,12 +3490,14 @@ M3.buildCrmDailyBreakdown = function(cMap, crmRows){
     {key:'date', label:'Date'},
     {key:'project', label:'Project'},
     {key:'source', label:'Source'},
+    {key:'subSource', label:'Sub Source', wrap:true},
     {key:'count', label:'Leads This Day'},
   ];
   const filterDefs = [
     {key:'dateRaw', label:'Date', type:'daterange'},
     {key:'project', label:'Project'},
     {key:'source', label:'Source'},
+    {key:'subSource', label:'Sub Source', type:'multiincludes'},
     {key:'count', label:'Leads This Day'},
   ];
   new DataTable({
@@ -3376,6 +3530,7 @@ M3.generateSummaryMode = async function(){
     crmRowsForMatching = kept;
   }
   M3._channelExcludedCount = channelExcludedCount;
+  M3._channelKeptCount = cMap.channel ? crmRowsForMatching.length : null;
 
   // Scope the agency's rows to whichever CRM's territory this CRM file actually belongs
   // to — handles an agency whose own file covers projects for BOTH CRMs mixed together.
@@ -3389,29 +3544,67 @@ M3.generateSummaryMode = async function(){
   crmRowsForMatching.forEach(row=>{
     const project = Utils.val(row, cMap.project);
     if(Utils.isBlank(project)) return;
-    const source = useSource ? (Utils.resolveSource(Utils.val(row, cMap.source)).canonical || Utils.val(row, cMap.source)) : '';
+    const sourceRaw = Utils.val(row, cMap.source);
+    const source = useSource ? (Utils.resolveSource(sourceRaw).canonical || sourceRaw) : '';
     const key = source+'||'+project;
-    if(!crmByKey[key]) crmByKey[key] = {project, source, received:0};
+    if(!crmByKey[key]) crmByKey[key] = {project, source, received:0, subSources:new Set()};
     crmByKey[key].received++;
+    if(useSource && !Utils.isBlank(sourceRaw)) crmByKey[key].subSources.add(Utils.norm(sourceRaw));
   });
   const crmBySource = {};
   Object.values(crmByKey).forEach(g=>{
     if(!crmBySource[g.source]) crmBySource[g.source] = [];
-    crmBySource[g.source].push({project:g.project, received:g.received});
+    crmBySource[g.source].push({project:g.project, received:g.received, subSources:g.subSources});
   });
 
-  const out = [];
+  // Aggregate the agency's rows by (Project + Source) BEFORE matching — a
+  // genuinely pre-summed file has exactly one row per project already, so this
+  // is a no-op for well-formed input. But if the file actually has multiple rows
+  // per project (e.g. raw lead-level data uploaded here by mistake, rather than
+  // true one-row-per-project totals), processing each row independently would
+  // re-match and re-sum the SAME CRM total once per row — multiplying the
+  // reported CRM count by however many duplicate rows exist. Summing first
+  // avoids that entirely, regardless of which shape the file turns out to be.
+  const agencyAggregated = {};
   agencyRowsScoped.forEach(row=>{
     const project = Utils.val(row, aMap.project);
     if(Utils.isBlank(project)) return;
     const generated = parseFloat(Utils.val(row, aMap.generatedCount)) || 0;
-    const source = useSource ? (Utils.resolveSource(Utils.val(row, aMap.source)).canonical || Utils.val(row, aMap.source)) : '';
-    const region = aMap.region ? Utils.val(row, aMap.region) : '';
-    const assignedTarget = aMap.assignedTarget ? Utils.val(row, aMap.assignedTarget) : '';
-    const shortfallVal = aMap.shortfall ? Utils.val(row, aMap.shortfall) : '';
-    const cpl = aMap.cpl ? Utils.val(row, aMap.cpl) : '';
-    const totalSpent = aMap.totalSpent ? Utils.val(row, aMap.totalSpent) : '';
-    const agencyStatus = aMap.status ? Utils.val(row, aMap.status) : '';
+    const sourceRaw = Utils.val(row, aMap.source);
+    const source = useSource ? (Utils.resolveSource(sourceRaw).canonical || sourceRaw) : '';
+    const key = source+'||'+project;
+    if(!agencyAggregated[key]){
+      agencyAggregated[key] = {
+        project, source, generated: 0, subSourceSet: new Set(),
+        region: aMap.region ? Utils.val(row, aMap.region) : '',
+        assignedTarget: aMap.assignedTarget ? Utils.val(row, aMap.assignedTarget) : '',
+        shortfallVal: aMap.shortfall ? Utils.val(row, aMap.shortfall) : '',
+        cpl: aMap.cpl ? Utils.val(row, aMap.cpl) : '',
+        totalSpent: aMap.totalSpent ? Utils.val(row, aMap.totalSpent) : '',
+        agencyStatus: aMap.status ? Utils.val(row, aMap.status) : '',
+        rowCount: 0
+      };
+    }
+    agencyAggregated[key].generated += generated;
+    agencyAggregated[key].rowCount++;
+    if(useSource && !Utils.isBlank(sourceRaw)) agencyAggregated[key].subSourceSet.add(Utils.norm(sourceRaw));
+  });
+  // If ANY project shows up on more than one raw row, this file wasn't actually
+  // pre-aggregated the way Summary Mode expects — flagged so it's visible rather
+  // than silently just working differently than the person assumed.
+  M3._agencyRowsPerProject = Object.values(agencyAggregated).some(g=>g.rowCount > 1);
+
+  const out = [];
+  Object.values(agencyAggregated).forEach(g=>{
+    const project = g.project;
+    const generated = g.generated;
+    const source = g.source;
+    const region = g.region;
+    const assignedTarget = g.assignedTarget;
+    const shortfallVal = g.shortfallVal;
+    const cpl = g.cpl;
+    const totalSpent = g.totalSpent;
+    const agencyStatus = g.agencyStatus;
 
     const candidates = crmBySource[source] || [];
     const match = M3.matchProject(project, candidates);
@@ -3420,6 +3613,12 @@ M3.generateSummaryMode = async function(){
     const gap = generated - received;
     const gapPct = generated > 0 ? Math.round((gap/generated)*1000)/10 : null;
     const tolerance = Math.max(1, Math.round(generated*0.05));
+
+    // Every raw sub-source code seen — the agency group's own codes plus whatever
+    // raw codes the matched CRM projects used.
+    const subSourceSet = new Set(g.subSourceSet);
+    match.matches.forEach(m=>{ if(m.subSources) m.subSources.forEach(s=>subSourceSet.add(s)); });
+    const subSource = Array.from(subSourceSet).sort().join(', ');
 
 
     let status, action;
@@ -3438,7 +3637,7 @@ M3.generateSummaryMode = async function(){
     }
 
     out.push({
-      source, agencyProject: project, matchedCrmProject: matchedNames || '(none found)', matchType: match.type,
+      source, subSource: subSource || '(not mapped)', agencyProject: project, matchedCrmProject: matchedNames || '(none found)', matchType: match.type,
       generated, received, gap, gapPct: gapPct===null?'N/A':gapPct+'%',
       region, assignedTarget, shortfall: shortfallVal, cpl, totalSpent, agencyStatus,
       status, action
@@ -3466,8 +3665,12 @@ M3.buildSummaryReport = function(rows){
     <div class="kpi tone-accent"><div class="k-label">CRM actual (matched projects)</div><div class="k-value">${totalReceived}</div></div>
     <div class="kpi tone-red"><div class="k-label">Total gap (claimed − actual)</div><div class="k-value">${totalGap}</div></div>
     <div class="kpi tone-amber"><div class="k-label">Projects with no CRM match</div><div class="k-value">${unmatchedCount}</div></div>
+    ${M3._channelKeptCount!==null ? `<div class="kpi tone-green"><div class="k-label">Website channel leads (CRM)</div><div class="k-value">${M3._channelKeptCount}</div></div>` : ''}
     ${M3._channelExcludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">CRM rows excluded (not Website channel)</div><div class="k-value">${M3._channelExcludedCount}</div></div>` : ''}
   `;
+  if(M3._agencyRowsPerProject){
+    Utils.toast('Heads up: your agency file has more than one row for some projects — they were summed together, but double-check this file is really meant to be one row per project (Summary Mode assumes pre-aggregated totals).');
+  }
 
   const byType = {};
   rows.forEach(r=>{ byType[r.matchType] = (byType[r.matchType]||0)+1; });
@@ -3478,6 +3681,7 @@ M3.buildSummaryReport = function(rows){
 
   const columns = [
     {key:'source', label:'Source'},
+    {key:'subSource', label:'Sub Source', wrap:true},
     {key:'region', label:'Region'},
     {key:'agencyProject', label:'Agency Project', wrap:true},
     {key:'matchedCrmProject', label:'Matched CRM Project(s)', wrap:true},
@@ -3495,6 +3699,7 @@ M3.buildSummaryReport = function(rows){
   ];
   const filterDefs = [
     {key:'source', label:'Source'},
+    {key:'subSource', label:'Sub Source', type:'multiincludes'},
     {key:'region', label:'Region'},
     {key:'agencyProject', label:'Agency Project'},
     {key:'matchedCrmProject', label:'Matched CRM Project(s)'},
@@ -3548,6 +3753,7 @@ M3.generateLeadLevel = async function(){
     crmRowsForMatching = kept;
   }
   M3._channelExcludedCount = channelExcludedCount;
+  M3._channelKeptCount = cMap.channel ? crmRowsForMatching.length : null;
 
   // Scope the agency's rows to whichever CRM's territory this CRM file actually belongs
   // to — handles an agency whose own file covers projects for BOTH CRMs mixed together,
@@ -3563,16 +3769,18 @@ M3.generateLeadLevel = async function(){
   crmRowsForMatching.forEach(row=>{
     const project = Utils.val(row, cMap.project);
     if(Utils.isBlank(project)) return;
-    const source = useSource ? (Utils.resolveSource(Utils.val(row, cMap.source)).canonical || Utils.val(row, cMap.source)) : '';
+    const sourceRaw = Utils.val(row, cMap.source);
+    const source = useSource ? (Utils.resolveSource(sourceRaw).canonical || sourceRaw) : '';
     const key = source+'||'+project;
-    if(!crmGroups[key]) crmGroups[key] = {source, project, received:0, dates:[]};
+    if(!crmGroups[key]) crmGroups[key] = {source, project, received:0, dates:[], subSources:new Set()};
     crmGroups[key].received++;
+    if(useSource && !Utils.isBlank(sourceRaw)) crmGroups[key].subSources.add(Utils.norm(sourceRaw));
     if(cMap.date){ const d = Utils.toDateSafe(Utils.val(row, cMap.date)); if(d) crmGroups[key].dates.push(d); }
   });
   const crmBySource = {};
   Object.values(crmGroups).forEach(g=>{
     if(!crmBySource[g.source]) crmBySource[g.source] = [];
-    crmBySource[g.source].push({project:g.project, received:g.received, dates:g.dates});
+    crmBySource[g.source].push({project:g.project, received:g.received, dates:g.dates, subSources:g.subSources});
   });
 
   // Agency side: count per (source, project), matching each project name against
@@ -3582,10 +3790,12 @@ M3.generateLeadLevel = async function(){
   agencyRowsScoped.forEach(row=>{
     const project = Utils.val(row, aMap.project);
     if(Utils.isBlank(project)) return;
-    const source = useSource ? (Utils.resolveSource(Utils.val(row, aMap.source)).canonical || Utils.val(row, aMap.source)) : '';
+    const sourceRaw = Utils.val(row, aMap.source);
+    const source = useSource ? (Utils.resolveSource(sourceRaw).canonical || sourceRaw) : '';
     const key = source+'||'+project;
-    if(!agencyGroups[key]) agencyGroups[key] = {source, project, generated:0, dates:[]};
+    if(!agencyGroups[key]) agencyGroups[key] = {source, project, generated:0, dates:[], subSources:new Set()};
     agencyGroups[key].generated++;
+    if(useSource && !Utils.isBlank(sourceRaw)) agencyGroups[key].subSources.add(Utils.norm(sourceRaw));
     if(aMap.date){ const d = Utils.toDateSafe(Utils.val(row, aMap.date)); if(d) agencyGroups[key].dates.push(d); }
   });
 
@@ -3622,8 +3832,16 @@ M3.generateLeadLevel = async function(){
       }
     }
 
+    // Every raw sub-source code seen on either side for this canonical source —
+    // e.g. Source="GTF" might combine "GT", "GTPL", "ND" if the agency/CRM data
+    // used a mix of these. Shown and filterable separately from the canonical
+    // Source itself, so a specific raw code can still be isolated.
+    const subSourceSet = new Set(g.subSources);
+    match.matches.forEach(m=>{ if(m.subSources) m.subSources.forEach(s=>subSourceSet.add(s)); });
+    const subSource = Array.from(subSourceSet).sort().join(', ');
+
     out.push({
-      source: g.source || '(not mapped)', project: g.project, matchedCrmProject: matchedNames || '(none found)', matchType: match.type,
+      source: g.source || '(not mapped)', subSource: subSource || '(not mapped)', project: g.project, matchedCrmProject: matchedNames || '(none found)', matchType: match.type,
       generated: g.generated, received, gap, status, month, duration, dateRangeStart, dateRangeEnd
     });
   });
@@ -3835,6 +4053,7 @@ M3.buildSimpleReport = function(rows, useSource, useDate){
     <div class="kpi tone-red"><div class="k-label">Total difference</div><div class="k-value">${totalGap}</div></div>
     <div class="kpi tone-amber"><div class="k-label">Projects with no CRM match</div><div class="k-value">${unmatchedCount}</div></div>
     ${M3._territoryExcludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">Agency rows excluded (belong to the other CRM's cities, not ${Utils.escapeHtml(M3._crmTerritory||'this CRM')})</div><div class="k-value">${M3._territoryExcludedCount}</div></div>` : ''}
+    ${M3._channelKeptCount!==null ? `<div class="kpi tone-green"><div class="k-label">Website channel leads (CRM)</div><div class="k-value">${M3._channelKeptCount}</div></div>` : ''}
     ${M3._channelExcludedCount>0 ? `<div class="kpi tone-accent"><div class="k-label">CRM rows excluded (not Website channel)</div><div class="k-value">${M3._channelExcludedCount}</div></div>` : ''}
   `;
 
@@ -3868,7 +4087,9 @@ M3.buildSimpleReport = function(rows, useSource, useDate){
     filterDefs.push({key:'dateRange', label:'Date', type:'daterangeoverlap'});
   }
   if(useSource){
+    columns.unshift({key:'subSource', label:'Sub Source', wrap:true});
     columns.unshift({key:'source', label:'Source'});
+    filterDefs.unshift({key:'subSource', label:'Sub Source', type:'multiincludes'});
     filterDefs.unshift({key:'source', label:'Source'});
   }
 
