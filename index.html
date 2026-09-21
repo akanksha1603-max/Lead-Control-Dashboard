@@ -404,7 +404,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
             <button class="btn btn-sm" id="m2disp-clear">Clear filters</button>
             <button class="btn btn-sm" id="m2-dl-wrongnc">Download this list</button>
             <button class="btn btn-sm btn-primary" id="m2-dl-wrongnc-percc">Download per Sales Head (one sheet each)</button>
-            <button class="btn btn-sm btn-primary" id="m2-dl-wrongnc-grouped">Download grouped (Sales Head total → Team Member → Remark)</button>
+            <button class="btn btn-sm btn-primary" id="m2-dl-wrongnc-grouped">Download (with Sales Person column)</button>
           </div>
         </div>
         <div class="card" id="m2-full-status-card" style="display:none;">
@@ -1287,9 +1287,9 @@ Utils.classifyStatus = function(rawStatus){
 
 /* ---------- Column alias definitions ---------- */
 Utils.COLUMN_ALIASES = {
-  project:      ['Project Name','Project','ProjectName','Property','Opportunity Project','Opportunity Name','Project Name (BPL)'],
+  project:      ['Original Project','Project Name','Project','ProjectName','Property','Opportunity Project','Opportunity Name','Project Name (BPL)'],
   source:       ['Sub Source','Sub-source','Subsource','Opportunity Sub Source','Source/Sub-source','CRM Source/Sub-source','Source','Lead Source','Opportunity Source','Source Name'],
-  costCentre:   ['Cost Centre Person Name','Cost Center Person Name','Cost Centre Person','Cost Center Person','Team Member','CRM User','Owner (User Name)','Enquiry Owner','Handled By','Lead Owner','Owner','Assigned To','Sales Person','Employee Name','Cost Centre','Cost Center','Email','Owner Email','Owner Branch','Handler Branch','Branch Owner'],
+  costCentre:   ['Enquiry Owner','Handled By','Cost Centre Person Name','Cost Center Person Name','Cost Centre Person','Cost Center Person','Team Member','CRM User','Owner (User Name)','Lead Owner','Owner','Assigned To','Sales Person','Employee Name','Cost Centre','Cost Center','Email','Owner Email','Owner Branch','Handler Branch','Branch Owner'],
   salesHead:    ['Sales Head','SalesHead','Reporting Manager','Manager','Team Head','Team Lead','Cost Centre','Cost Center','Owner Branch','Branch Owner','Branch Owner Name'],
   status:       ['Current Status','Lead Status','Lead Stage','Stage','Status','Disposition','Opportunity Status'],
   date:         ['Date','Created Date','Created On','Lead Date','Enquiry Date','Opportunity Date'],
@@ -1365,7 +1365,7 @@ Utils.detectColumns = function(headers, fieldList, rows){
         if(bestScore > 0) result.status = best;
       }
     }
-    ['costCentre','salesHead','leadName'].forEach(field=>{
+    ['salesHead','leadName'].forEach(field=>{
       if(!fieldList.includes(field) || !result[field]) return;
       const aliases = Utils.COLUMN_ALIASES[field] || [field];
       const pool = normHeaders.filter(h=> aliases.some(a=>{ const aKey=Utils.normKey(a); return h.key.includes(aKey)||aKey.includes(h.key); }));
@@ -1923,7 +1923,22 @@ Utils.readFile = function(file){
 /* Get a value off a row using the detected/mapped header, tolerant of missing mapping */
 Utils.val = function(row, header){
   if(!header) return '';
-  return Utils.norm(row[header]);
+  const v = Utils.norm(row[header]);
+  // Smart fallback for 4QT's "Original Project" / "Project" pair — neither
+  // column alone captures every lead correctly. "Original Project" is
+  // preferred (it's the one that correctly disambiguates rows where "Project"
+  // holds several comma-separated names), but it comes back blank on some
+  // rows where "Project" is already a single, clean name with nothing
+  // ambiguous about it — those leads still belong to that project and
+  // shouldn't be lost. So: blank Original Project falls back to Project,
+  // but only when Project itself is a single value (no comma) — a genuinely
+  // combined Project on a row with no Original Project stays unresolved
+  // rather than guessing which of several names is the right one.
+  if(v === '' && header === 'Original Project' && row['Project'] !== undefined){
+    const fallback = Utils.norm(row['Project']);
+    if(fallback !== '' && !fallback.includes(',')) return fallback;
+  }
+  return v;
 };
 
 /* ---------- Manual mapping modal ----------
@@ -3085,7 +3100,7 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
       salesHead: salesHead || '(unassigned)', salesHeadIsAssumed: usedLsqCostCentreForSalesHead,
       costCentre: costCentre || '(unassigned)',
       areaCostCentre, areaRegion,
-      source: resolved.canonical || sourceRaw, sourceCategory: resolved.category,
+      source: resolved.canonical || sourceRaw, sourceCategory: resolved.category, subSource: sourceRaw || '',
       channel: Utils.classifyChannel(resolved.category), agency,
       originalStatus, statusClass,
       statusLabel: statusClass==='new' ? 'New' : (statusClass==='not_connected' ? 'Not Connected' : ''),
@@ -3231,32 +3246,28 @@ M2._renderDispositionGrouped = function(rows){
   if(!el) return;
   if(!rows.length){ el.innerHTML = ''; return; }
 
+  // Grouped by Sales Head, each with its own "Total: X" header — but ONE table
+  // per Sales Head (with a Sales Person column), not a separate table for
+  // every individual Team Member underneath them.
   const byHead = {};
   rows.forEach(l=>{
     const head = l.salesHead || '(No Sales Head mapped)';
-    const member = l.costCentre || '(Unassigned)';
-    if(!byHead[head]) byHead[head] = {total:0, members:{}};
-    byHead[head].total++;
-    if(!byHead[head].members[member]) byHead[head].members[member] = [];
-    byHead[head].members[member].push(l);
+    if(!byHead[head]) byHead[head] = [];
+    byHead[head].push(l);
   });
 
-  const heads = Object.entries(byHead).sort((a,b)=>b[1].total-a[1].total);
-  el.innerHTML = `<h3 style="margin:0 0 8px;font-size:14px;">Wrong Disposition by Sales Head &amp; Team Member <span class="mini-note" style="font-weight:normal;">Reflects whatever filters are currently applied above</span></h3>` +
-    heads.map(([head, data])=>{
-      const members = Object.entries(data.members).sort((a,b)=>b[1].length-a[1].length);
+  const heads = Object.entries(byHead).sort((a,b)=>b[1].length-a[1].length);
+  el.innerHTML = `<h3 style="margin:0 0 8px;font-size:14px;">Wrong Disposition by Sales Head <span class="mini-note" style="font-weight:normal;">Reflects whatever filters are currently applied above</span></h3>` +
+    heads.map(([head, leads])=>{
+      const sortedLeads = leads.slice().sort((a,b)=>(a.costCentre||'').localeCompare(b.costCentre||''));
       return `<div style="margin-bottom:14px;border:1px solid var(--line);border-radius:8px;overflow:hidden;">
         <div style="background:var(--bg-alt,#f4f4f4);padding:8px 12px;font-weight:600;display:flex;justify-content:space-between;">
-          <span>${Utils.escapeHtml(head)}</span><span>Total: ${data.total}</span>
+          <span>${Utils.escapeHtml(head)}</span><span>Total: ${leads.length}</span>
         </div>
-        ${members.map(([member, leads])=>`
-          <div style="padding:8px 12px;border-top:1px solid var(--line);">
-            <div style="font-weight:600;margin-bottom:4px;">${Utils.escapeHtml(member)} <span class="mini-note" style="font-weight:normal;">(${leads.length})</span></div>
-            <table class="attach-table" style="margin:0;">
-              <tr><th>Project</th><th>Source</th><th>Last Remark (Sales)</th></tr>
-              ${leads.map(l=>`<tr><td>${Utils.escapeHtml(l.project||'')}</td><td>${Utils.escapeHtml(l.source||'')}</td><td>${Utils.escapeHtml(l.salesRemark||'')}</td></tr>`).join('')}
-            </table>
-          </div>`).join('')}
+        <table class="attach-table" style="margin:0;">
+          <tr><th>Sales Person</th><th>Project</th><th>Source</th><th>Last Remark (Sales)</th></tr>
+          ${sortedLeads.map(l=>`<tr><td>${Utils.escapeHtml(l.costCentre||'')}</td><td>${Utils.escapeHtml(l.project||'')}</td><td>${Utils.escapeHtml(l.source||'')}</td><td>${Utils.escapeHtml(l.salesRemark||'')}</td></tr>`).join('')}
+        </table>
       </div>`;
     }).join('');
 };
@@ -3270,30 +3281,26 @@ M2.downloadDispositionGrouped = function(rows){
   const byHead = {};
   rows.forEach(l=>{
     const head = l.salesHead || '(No Sales Head mapped)';
-    const member = l.costCentre || '(Unassigned)';
-    if(!byHead[head]) byHead[head] = {total:0, members:{}};
-    byHead[head].total++;
-    if(!byHead[head].members[member]) byHead[head].members[member] = [];
-    byHead[head].members[member].push(l);
+    if(!byHead[head]) byHead[head] = [];
+    byHead[head].push(l);
   });
-  const heads = Object.entries(byHead).sort((a,b)=>b[1].total-a[1].total);
+  const heads = Object.entries(byHead).sort((a,b)=>b[1].length-a[1].length);
 
-  const aoa = [['Sales Head / Team Member', 'Project', 'Source', 'Count / Last Remark (Sales)']];
-  heads.forEach(([head, data])=>{
-    aoa.push([head.toUpperCase(), '', '', data.total]);
-    Object.entries(data.members).sort((a,b)=>b[1].length-a[1].length).forEach(([member, leads])=>{
-      aoa.push(['   ' + member, '', '', leads.length]);
-      leads.forEach(l=>{
-        aoa.push(['      ' + (l.project||''), l.source||'', '', l.salesRemark||'']);
-      });
+  const aoa = [['Sales Head', 'Total', '', '']];
+  heads.forEach(([head, leads])=>{
+    aoa.push([head.toUpperCase(), leads.length, '', '']);
+    aoa.push(['Sales Person', 'Project', 'Source', 'Last Remark (Sales)']);
+    leads.slice().sort((a,b)=>(a.costCentre||'').localeCompare(b.costCentre||'')).forEach(l=>{
+      aoa.push([l.costCentre||'', l.project||'', l.source||'', l.salesRemark||'']);
     });
+    aoa.push(['', '', '', '']); // blank spacer row between Sales Heads
   });
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:34},{wch:22},{wch:12},{wch:50}];
+  ws['!cols'] = [{wch:22},{wch:22},{wch:12},{wch:50}];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Wrong Disposition Grouped');
-  XLSX.writeFile(wb, 'wrong_disposition_grouped_by_sales_head.xlsx');
+  XLSX.utils.book_append_sheet(wb, ws, 'Wrong Disposition');
+  XLSX.writeFile(wb, 'wrong_disposition_by_sales_head.xlsx');
 };
 
 /* One Excel file, one sheet per Sales Head (Cost Centre) — each sheet holds a
@@ -3454,18 +3461,18 @@ M2.downloadTitledFlatReport = function(){
 
   const aoa = [
     [titleText],
-    ['Cost Centre (Area)', 'Team Member', 'Source', 'Channel', 'New', 'Not Connected'],
+    ['Cost Centre (Area)', 'Team Member', 'Source', 'Sub Source', 'Channel', 'New', 'Not Connected'],
   ];
   let totalNew = 0, totalNc = 0;
   rows.forEach(function(r){
-    aoa.push([r.areaCostCentre||'', r.costCentre||'', r.source||'', r.channel||'', r.newCount||0, r.notConnectedCount||0]);
+    aoa.push([r.areaCostCentre||'', r.costCentre||'', r.source||'', r.subSource||'', r.channel||'', r.newCount||0, r.notConnectedCount||0]);
     totalNew += r.newCount||0; totalNc += r.notConnectedCount||0;
   });
-  aoa.push(['TOTAL', '', '', '', totalNew, totalNc]);
+  aoa.push(['TOTAL', '', '', '', '', totalNew, totalNc]);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:22},{wch:20},{wch:12},{wch:10},{wch:8},{wch:14}];
-  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:5}}];
+  ws['!cols'] = [{wch:22},{wch:20},{wch:12},{wch:16},{wch:10},{wch:8},{wch:14}];
+  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:6}}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Report');
   XLSX.writeFile(wb, 'new_not_connected_report_' + fetchedDateLabel + '.xlsx');
@@ -3481,9 +3488,9 @@ M2.renderSummaries = function(leads){
   // two rows per combination) — easier to scan both numbers for the same person/source at once. ----
   const pivotMap = {};
   leads.forEach(l=>{
-    const key = [l.areaCostCentre, l.costCentre, l.source].join('||');
+    const key = [l.areaCostCentre, l.costCentre, l.source, l.subSource].join('||');
     if(!pivotMap[key]) pivotMap[key] = {
-      areaCostCentre: l.areaCostCentre, costCentre: l.costCentre, source: l.source, channel: l.channel,
+      areaCostCentre: l.areaCostCentre, costCentre: l.costCentre, source: l.source, subSource: l.subSource || '(not mapped)', channel: l.channel,
       newCount:0, notConnectedCount:0
     };
     if(l.statusClass==='new') pivotMap[key].newCount++;
@@ -3495,6 +3502,7 @@ M2.renderSummaries = function(leads){
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
     {key:'costCentre', label:'Team Member'},
     {key:'source', label:'Source'},
+    {key:'subSource', label:'Sub Source'},
     {key:'channel', label:'Channel'},
     {key:'newCount', label:'New'},
     {key:'notConnectedCount', label:'Not Connected'},
@@ -3503,6 +3511,7 @@ M2.renderSummaries = function(leads){
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
     {key:'costCentre', label:'Team Member'},
     {key:'source', label:'Source'},
+    {key:'subSource', label:'Sub Source'},
     {key:'channel', label:'Channel'},
   ];
 
@@ -3517,8 +3526,8 @@ M2.renderSummaries = function(leads){
         // The pivot's OWN filter changed (not the detail table) — reconstruct which underlying
         // leads that corresponds to, and refresh just the KPI row/breakdowns to match, WITHOUT
         // rebuilding this table itself (that would wipe out the filter the person just set).
-        const allowedKeys = new Set(filteredPivotRows.map(r=>[r.areaCostCentre, r.costCentre, r.source].join('||')));
-        const matchingLeads = M2._allFilteredLeads.filter(l=> allowedKeys.has([l.areaCostCentre, l.costCentre, l.source].join('||')));
+        const allowedKeys = new Set(filteredPivotRows.map(r=>[r.areaCostCentre, r.costCentre, r.source, r.subSource].join('||')));
+        const matchingLeads = M2._allFilteredLeads.filter(l=> allowedKeys.has([l.areaCostCentre, l.costCentre, l.source, l.subSource||'(not mapped)'].join('||')));
         M2.computeAndRenderKpisAndBreakdowns(matchingLeads);
         M2.renderFullStatusBreakdown(M2.getFilteredAllRows());
       }
@@ -3884,8 +3893,10 @@ M3.buildCrmProjectSourceCount = function(cMap, crmRows){
 
   const byKey = {};
   (crmRows || M3.crm.rows).forEach(row=>{
-    const project = Utils.val(row, cMap.project);
-    if(Utils.isBlank(project)) return;
+    // Blank project rows are kept (labeled "(blank)") rather than dropped —
+    // matches how a PivotTable itself would show them as their own row
+    // label rather than silently excluding them from the total.
+    const project = Utils.val(row, cMap.project) || '(blank)';
     const sourceRaw = cMap.source ? Utils.norm(Utils.val(row, cMap.source)) : '';
     const source = cMap.source ? (Utils.resolveSource(sourceRaw).canonical || sourceRaw) : '(not mapped)';
     const costCentre = cMap.costCentre ? Utils.prettifyPersonName(Utils.stripLocationTag(Utils.val(row, cMap.costCentre))) : '';
