@@ -193,6 +193,7 @@ button{font-family:inherit;}
   flex:none;width:14px;height:14px;min-width:0;margin:0;padding:0;border:0;background:none;cursor:pointer;
 }
 .ms-options .ms-opt-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ms-options .ms-opt-alias{display:block;font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
 /* ---------- Table ---------- */
 .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);}
@@ -968,6 +969,7 @@ Utils.DEFAULT_SOURCE_MASTER = [
   {raw:'XD',                 canonical:'XD',   category:'Search ads'},
   {raw:'XDD',                canonical:'XD',   category:'Google Demand Gen'},
   {raw:'Developer Lead - XDD', canonical:'XD', category:'Google Demand Gen'},
+  {raw:'Developer Lead - XD',  canonical:'XD', category:'Search ads'},
   {raw:'XDPL',                canonical:'XD',   category:'Google Platter'},
   {raw:'XD & XDD',            canonical:'XD',   category:'Search ads'},
   {raw:'Mcube XD',            canonical:'Mcube XD', category:'IVR'},
@@ -987,6 +989,7 @@ Utils.DEFAULT_SOURCE_MASTER = [
   {raw:'Mcube AJN',            canonical:'Mcube AJN', category:'IVR'},
   {raw:'99 Acres',             canonical:'99 Acres', category:'property portal'},
   {raw:'GRAFF META',            canonical:'GRAFFINO', category:'Meta ads'},
+  {raw:'GRAF META',             canonical:'GRAFFINO', category:'Meta ads'},
   {raw:'WOLF META',            canonical:'Wolf Media', category:'Meta'},
   {raw:'PPC',                  canonical:'Marasim', category:'PPC ads'},
   {raw:'META WOLF',            canonical:'Wolf Media', category:'Meta'}
@@ -1192,7 +1195,11 @@ Utils.resolveSource = function(rawSource){
     Utils.Settings.sourceMaster.forEach(e=>{
       const mk = Utils.normKey(e.raw);
       if(mk.length < 6) return; // skip short codes to avoid false positives
-      if((key.includes(mk) || mk.includes(key)) && mk.length > bestLen){ best = e; bestLen = mk.length; }
+      // Only "raw name CONTAINS a master code" counts. The reverse direction
+      // (a short raw name found inside a longer master code) caused false
+      // groupings: "DG" matched inside "GT ,GTPL, ND & GTAW" (→ GTF) and plain
+      // "MCube" matched inside "Mcube AJN" (→ Mcube AJN).
+      if(key.includes(mk) && mk.length > bestLen){ best = e; bestLen = mk.length; }
     });
     if(best) hit = best;
   }
@@ -2110,7 +2117,7 @@ DataTable.prototype._renderFilterBar = function(){
             </div>
             ${values.length > 8 ? `<input type="text" class="ms-search" placeholder="Search…" id="${this.prefix}-mssearch-${f.key}">` : ''}
             <div class="ms-options" id="${this.prefix}-msoptions-${f.key}">
-              ${values.map(v=>`<label title="${Utils.escapeHtml(v)}"><input type="checkbox" value="${Utils.escapeHtml(v)}" checked><span class="ms-opt-text">${Utils.escapeHtml(v)}</span></label>`).join('')}
+              ${values.map(v=>this._msOptionHtml(f, v, true)).join('')}
             </div>
           </div>
         </div>
@@ -2192,6 +2199,31 @@ DataTable.prototype._wireMultiSelect = function(key){
       });
     });
   }
+};
+/* Optional per-filter "aliasKey": the raw values grouped under each option
+   (e.g. Source "DMXD" groups raw "Digital Marketing" + "Digital Marketing XD").
+   They're shown under the option and included in its search text, so typing a
+   raw name from the Excel file still finds the grouped option it belongs to. */
+DataTable.prototype._msAliases = function(f){
+  if(!f.aliasKey) return null;
+  this._aliasCache = this._aliasCache || {};
+  if(this._aliasCache[f.key]) return this._aliasCache[f.key];
+  const map = {};
+  this.rows.forEach(r=>{
+    const v = Utils.normForFilter(r[f.key]);
+    const a = Utils.norm(r[f.aliasKey]);
+    if(!a || a === v || a === '(not mapped)') return;
+    (map[v] = map[v] || new Set()).add(a);
+  });
+  return this._aliasCache[f.key] = map;
+};
+DataTable.prototype._msOptionHtml = function(f, v, checked){
+  const map = this._msAliases(f);
+  const aliases = map && map[v] ? Array.from(map[v]).sort() : [];
+  const aliasTxt = aliases.join(', ');
+  const title = aliasTxt ? `${v} — includes: ${aliasTxt}` : v;
+  return `<label title="${Utils.escapeHtml(title)}"><input type="checkbox" value="${Utils.escapeHtml(v)}" ${checked?'checked':''}>`
+    + `<span class="ms-opt-text">${Utils.escapeHtml(v)}${aliasTxt ? `<span class="ms-opt-alias">${Utils.escapeHtml(aliasTxt)}</span>` : ''}</span></label>`;
 };
 DataTable.prototype._applyMsFilter = function(key){
   const optionsWrap = document.getElementById(this.prefix+'-msoptions-'+key);
@@ -2441,7 +2473,7 @@ DataTable.prototype._updateCascadingOptions = function(){
     const hadExplicitSelection = Array.isArray(priorSelection);
     optionsWrap.innerHTML = values.map(v=>{
       const checked = hadExplicitSelection ? priorSelection.includes(v) : true;
-      return `<label title="${Utils.escapeHtml(v)}"><input type="checkbox" value="${Utils.escapeHtml(v)}" ${checked?'checked':''}><span class="ms-opt-text">${Utils.escapeHtml(v)}</span></label>`;
+      return self._msOptionHtml(f, v, checked);
     }).join('');
     optionsWrap.querySelectorAll('input[type=checkbox]').forEach(cb=>{
       cb.addEventListener('change', ()=> self._applyMsFilter(f.key));
@@ -3944,7 +3976,7 @@ M3.buildCrmProjectSourceCount = function(cMap, crmRows){
   ];
   const filterDefs = [
     {key:'project', label:'Project'},
-    {key:'source', label:'Source'},
+    {key:'source', label:'Source', aliasKey:'subSource'},
     {key:'subSource', label:'Sub Source'},
   ];
   if(cMap.crmTag) filterDefs.push({key:'crmTag', label:'CRM'});
