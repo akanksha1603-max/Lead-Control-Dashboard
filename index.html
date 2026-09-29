@@ -415,6 +415,20 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
             <button class="btn btn-sm btn-primary" id="m2-dl-wrongnc-grouped">Download (with Sales Person column)</button>
           </div>
         </div>
+        <div class="card" id="m2-dispreason-card" style="display:none;">
+          <h2>Disposition Reason Breakdown <small>Flags Not Connected, Dump, and Requirement Mismatch leads whose own remark suggests the disposition looks wrong — genuine contact for Not Connected, or signs of an active lead (sent details, follow-up, visit planned) for Dump/Requirement Mismatch</small></h2>
+          <div class="filter-bar" id="m2dispreason-filters"></div>
+          <div class="table-wrap"><table class="data" id="m2dispreason-table"></table></div>
+          <div class="table-foot">
+            <span class="rec-count" id="m2dispreason-count"></span>
+            <div class="pager" id="m2dispreason-pager"></div>
+          </div>
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn btn-sm" id="m2dispreason-clear">Clear filters</button>
+            <button class="btn btn-sm" id="m2dispreason-dl-full">Download full Excel</button>
+            <button class="btn btn-sm btn-primary" id="m2dispreason-dl-filtered">Download filtered Excel</button>
+          </div>
+        </div>
         <div class="card" id="m2-full-status-card" style="display:none;">
           <h2>Full Status Breakdown <small>Every status in the file — New, Not Connected, Qualified, Dump, everything — not just the New/Not Connected subset this report normally keeps</small></h2>
           <div class="kpi-row" id="m2-full-status-headline"></div>
@@ -3239,7 +3253,7 @@ M2.renderDispositionCheck = function(leads){
 
   const cols = [
     {key:'crm', label:'CRM'}, {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
-    {key:'costCentre', label:'Team Member'}, {key:'salesRemark', label:'Last Remark (Sales)'}
+    {key:'costCentre', label:'Team Member'}, {key:'originalStatus', label:'Current Status'}, {key:'salesRemark', label:'Last Remark (Sales)'}
   ];
   const filterDefs = [
     {key:'salesHead', label:'Sales Head'},
@@ -3247,6 +3261,7 @@ M2.renderDispositionCheck = function(leads){
     {key:'project', label:'Project'},
     {key:'source', label:'Source'},
     {key:'crm', label:'CRM'},
+    {key:'originalStatus', label:'Current Status'},
   ];
 
   if(!M2.dispositionTable){
@@ -3579,6 +3594,7 @@ M2.renderSummaries = function(leads){
 
   // ---- Not Connected reason breakdown, straight from the executive/CRM remarks ----
   M2.renderReasonAndAgingBreakdowns(leads);
+  M2.renderDispositionReasonBreakdown();
 };
 
 M2.computeAndRenderKpisAndBreakdowns = function(leads){
@@ -3611,6 +3627,75 @@ M2.computeAndRenderKpisAndBreakdowns = function(leads){
   });
 
   M2.renderReasonAndAgingBreakdowns(leads);
+  M2.renderDispositionReasonBreakdown();
+};
+
+/* Disposition Reason Breakdown — a filterable, lead-level table covering
+   Not Connected, Dump, and Requirement Mismatch (their "(Dump)" variants
+   folded into the same base category), showing the sales rep's OWN remark
+   for each one rather than a generic reason code. Draws from M2._allRows
+   (every status in the file), not the New/Not Connected-only leads array,
+   since Dump and Requirement Mismatch never make it into that narrower set. */
+const DISPOSITION_CATEGORIES = ['Not Connected', 'Dump', 'Requirement Mismatch'];
+M2._dispositionCategoryOf = function(originalStatus){
+  const s = String(originalStatus||'');
+  if(s.startsWith('Not Connected')) return 'Not Connected';
+  if(s.startsWith('Requirement Mismatch')) return 'Requirement Mismatch';
+  // 4QT uses plain "Dump"; LeadSquared phrases the same disposition as
+  // "Not Interested/Dump" — catching it by substring covers both without
+  // misclassifying anything else (nothing else in either CRM's status
+  // vocabulary contains the word "Dump").
+  if(s.includes('Dump') && !s.includes('Not Connected') && !s.includes('Requirement Mismatch')) return 'Dump';
+  return null;
+};
+// For Dump / Requirement Mismatch specifically: unlike Not Connected (where the
+// question is "did contact even happen"), these two statuses already imply
+// contact happened — the question is whether the lead is genuinely dead/a
+// mismatch, or still active. Any of these signals in the sales rep's own
+// remark suggests it's still being worked, which contradicts a "dead" label.
+const DUMP_MISMATCH_WRONG_RE = /\bsen[dt]\b|\bdetails?\s*shar(e|ed|ing)?\b|\bfollow\s*up\b|\bnext\s*follow\b|\bwill\s*talk\b|\bvisit\b|\bnext\s*week\b/i;
+M2._isWrongDisposition = function(l){
+  const text = [l.remarks, l.salesRemark].join(' ');
+  if(l.dispositionCategory === 'Not Connected'){
+    if(NOT_CONNECTED_NEGATION_RE.test(text)) return false; // genuinely not connected, no matter what else the text says
+    return CONTACT_EVIDENCE_RE.test(text);
+  }
+  // Dump / Requirement Mismatch
+  return DUMP_MISMATCH_WRONG_RE.test(text);
+};
+M2.renderDispositionReasonBreakdown = function(){
+  const card = document.getElementById('m2-dispreason-card');
+  const allRows = M2._allRows || [];
+  const rows = allRows
+    .map(r=>({...r, dispositionCategory: M2._dispositionCategoryOf(r.originalStatus)}))
+    .filter(r=>r.dispositionCategory)
+    .filter(r=>M2._isWrongDisposition(r));
+
+  if(!rows.length){ if(card) card.style.display='none'; return; }
+  if(card) card.style.display = 'block';
+
+  const columns = [
+    {key:'dispositionCategory', label:'Disposition'},
+    {key:'originalStatus', label:'Current Status'},
+    {key:'project', label:'Project', wrap:true},
+    {key:'source', label:'Source'},
+    {key:'salesHead', label:'Sales Head'},
+    {key:'costCentre', label:'Sales Person'},
+    {key:'salesRemark', label:'Reason (Sales Rep\'s Own Remark)', wrap:true},
+  ];
+  const filterDefs = [
+    {key:'dispositionCategory', label:'Disposition'},
+    {key:'originalStatus', label:'Current Status'},
+  ];
+
+  if(!M2.dispReasonTable){
+    M2.dispReasonTable = new DataTable({
+      prefix:'m2dispreason', columns:columns, rows:rows, filterDefs:filterDefs,
+      filename:'disposition_reasons.xlsx', pageSize:50
+    });
+  } else {
+    M2.dispReasonTable.updateRows(rows);
+  }
 };
 
 M2.renderReasonAndAgingBreakdowns = function(leads){
