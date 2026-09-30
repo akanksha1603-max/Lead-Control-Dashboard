@@ -359,7 +359,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
     <section class="view" id="v2">
       <div class="view-head">
         <div>
-          <h1>New &amp; Not Connected — Sales Follow-up Control</h1>
+          <h1>New, Not Connected, Requirement Mismatch &amp; Dump — Sales Follow-up Control</h1>
           <p>Surface paid performance-marketing leads sitting in New or Not Connected so sales can act on them.</p>
         </div>
       </div>
@@ -413,20 +413,6 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
             <button class="btn btn-sm" id="m2-dl-wrongnc">Download this list</button>
             <button class="btn btn-sm btn-primary" id="m2-dl-wrongnc-percc">Download per Sales Head (one sheet each)</button>
             <button class="btn btn-sm btn-primary" id="m2-dl-wrongnc-grouped">Download (with Sales Person column)</button>
-          </div>
-        </div>
-        <div class="card" id="m2-dispreason-card" style="display:none;">
-          <h2>Disposition Reason Breakdown <small>Flags Not Connected, Dump, and Requirement Mismatch leads whose own remark suggests the disposition looks wrong — genuine contact for Not Connected, or signs of an active lead (sent details, follow-up, visit planned) for Dump/Requirement Mismatch</small></h2>
-          <div class="filter-bar" id="m2dispreason-filters"></div>
-          <div class="table-wrap"><table class="data" id="m2dispreason-table"></table></div>
-          <div class="table-foot">
-            <span class="rec-count" id="m2dispreason-count"></span>
-            <div class="pager" id="m2dispreason-pager"></div>
-          </div>
-          <div class="btn-row" style="margin-top:10px;">
-            <button class="btn btn-sm" id="m2dispreason-clear">Clear filters</button>
-            <button class="btn btn-sm" id="m2dispreason-dl-full">Download full Excel</button>
-            <button class="btn btn-sm btn-primary" id="m2dispreason-dl-filtered">Download filtered Excel</button>
           </div>
         </div>
         <div class="card" id="m2-full-status-card" style="display:none;">
@@ -918,12 +904,59 @@ Utils.titleCase = function(s){
 Utils.isBlank = function(s){
   return Utils.norm(s) === '';
 };
+/* Strict date parser. The old version used plain new Date(v), which in Chrome
+   turns any stray number into a fake date ("12" → 01-Dec-2001) and reads Indian
+   dd/mm dates as US mm/dd ("12/09/2026" → 9 Dec). This handles the formats CRM
+   exports actually use and returns null for anything else, instead of guessing. */
+Utils._MONTH_IDX = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
 Utils.toDateSafe = function(v){
-  if(!v) return null;
-  const d = new Date(v);
-  if(isNaN(d.getTime())) return null;
+  if(v===null || v===undefined || v==='') return null;
+  let d = null;
+  const mk = (y,m,day)=>{
+    if(y < 100) y += 2000;
+    const x = new Date(y, m, day);
+    return (x.getFullYear()===y && x.getMonth()===m && x.getDate()===day) ? x : null;
+  };
+  if(v instanceof Date){
+    d = new Date(v.getTime());
+  } else if(typeof v === 'number' || /^\d{5}(\.\d+)?$/.test(String(v).trim())){
+    // Excel serial date number (e.g. 46289)
+    const n = Number(v);
+    if(!(n > 20000 && n < 80000)) return null;
+    const u = new Date(Math.round((n - 25569) * 86400000));
+    d = new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate());
+  } else {
+    const s = String(v).trim().replace(/\s+/g,' ');
+    let m;
+    if((m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))){                 // 2026-09-24
+      d = mk(+m[1], +m[2]-1, +m[3]);
+    } else if((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4}|\d{2})\b/))){   // 24/09/2026 (day first)
+      let a = +m[1], b = +m[2];
+      if(b > 12 && a <= 12){ const t = a; a = b; b = t; }                        // clearly mm/dd — swap
+      d = mk(+m[3], b-1, a);
+    } else if((m = s.match(/^(\d{1,2})[ \-\/.]?([A-Za-z]{3,9})[ \-\/.,]*(\d{4}|\d{2})\b/))){ // 24 Sep 2026, 24-Sep-26
+      const mi = Utils._MONTH_IDX[m[2].slice(0,3).toLowerCase()];
+      if(mi === undefined) return null;
+      d = mk(+m[3], mi, +m[1]);
+    } else if((m = s.match(/^(?:[A-Za-z]{3,9},? )?([A-Za-z]{3,9})[ \-.]+(\d{1,2})(?:st|nd|rd|th)?,?[ \-.]+(\d{4})\b/))){ // Sep 24, 2026
+      const mi = Utils._MONTH_IDX[m[1].slice(0,3).toLowerCase()];
+      if(mi === undefined) return null;
+      d = mk(+m[3], mi, +m[2]);
+    } else {
+      if(!/\b(19|20)\d{2}\b/.test(s)) return null;  // no real year → don't let the browser invent one
+      d = new Date(s);
+    }
+  }
+  if(!d || isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  if(y < 1990 || y > 2100) return null;
   d.setHours(0,0,0,0);
   return d;
+};
+/* YYYY-MM-DD in LOCAL time. toISOString() converts to UTC first, which in India
+   (UTC+5:30) turns local midnight into the previous day. */
+Utils.toISODateLocal = function(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 };
 Utils.MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 Utils.formatDateShort = function(d){
@@ -2129,7 +2162,7 @@ DataTable.prototype._renderFilterBar = function(){
               <button type="button" class="ms-all" id="${this.prefix}-msall-${f.key}">Select all</button>
               <button type="button" class="ms-none" id="${this.prefix}-msnone-${f.key}">Clear</button>
             </div>
-            ${values.length > 8 ? `<input type="text" class="ms-search" placeholder="Search…" id="${this.prefix}-mssearch-${f.key}">` : ''}
+            ${values.length > 5 ? `<input type="text" class="ms-search" placeholder="Search…" id="${this.prefix}-mssearch-${f.key}">` : ''}
             <div class="ms-options" id="${this.prefix}-msoptions-${f.key}">
               ${values.map(v=>this._msOptionHtml(f, v, true)).join('')}
             </div>
@@ -2185,14 +2218,24 @@ DataTable.prototype._wireMultiSelect = function(key){
     document.querySelectorAll('.ms-panel').forEach(p=>{ p.style.display = 'none'; });
     panel.style.display = isOpen ? 'none' : 'block';
   });
+  // Like Excel's "Select All Search Results": while a search term is typed,
+  // Select all picks ONLY the matching options (and unticks the rest), and
+  // Clear unticks only the matching ones. With no search, both act on everything.
+  const searching = ()=>{
+    const se = document.getElementById(self.prefix+'-mssearch-'+key);
+    return !!(se && se.value.trim());
+  };
+  const isVisible = cb=>{ const l = cb.closest('label'); return !l || l.style.display !== 'none'; };
   if(allBtn) allBtn.addEventListener('click', function(e){
     e.stopPropagation();
-    optionsWrap.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=true);
+    const s = searching();
+    optionsWrap.querySelectorAll('input[type=checkbox]').forEach(cb=>{ cb.checked = s ? isVisible(cb) : true; });
     self._applyMsFilter(key);
   });
   if(noneBtn) noneBtn.addEventListener('click', function(e){
     e.stopPropagation();
-    optionsWrap.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=false);
+    const s = searching();
+    optionsWrap.querySelectorAll('input[type=checkbox]').forEach(cb=>{ if(!s || isVisible(cb)) cb.checked = false; });
     self._applyMsFilter(key);
   });
   optionsWrap.querySelectorAll('input[type=checkbox]').forEach(cb=>{
@@ -3073,7 +3116,16 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
     const locationText = Utils.val(row, map.location);
     if(Utils.isBlank(originalStatus)) return; // can't classify
 
-    const statusClass = Utils.classifyStatus(originalStatus);
+    // New / Not Connected come from the shared classifier. Dump and Requirement
+    // Mismatch are added here from the same Current Status column. Any "(Dump)"
+    // variant — e.g. "Not Connected (Dump)", "Requirement Mismatch (Dump)" — counts
+    // as Dump, matching how the CRM's own "Status" column tallies them.
+    let statusClass = Utils.classifyStatus(originalStatus);
+    if(statusClass === 'other'){
+      const sl = Utils.normLoose(originalStatus);
+      if(/dump/.test(sl)) statusClass = 'dump';
+      else if(/requirement\s*mis\s*match|mis\s*match|mis\s*requirement|req(uirement)?\s*mismatch/.test(sl)) statusClass = 'req_mismatch';
+    }
 
     const resolved = Utils.resolveSource(sourceRaw);
     const isPerformance = Utils.isPerformanceCategory(resolved.category);
@@ -3156,7 +3208,7 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
       source: resolved.canonical || sourceRaw, sourceCategory: resolved.category, subSource: sourceRaw || '',
       channel: Utils.classifyChannel(resolved.category), agency,
       originalStatus, statusClass,
-      statusLabel: statusClass==='new' ? 'New' : (statusClass==='not_connected' ? 'Not Connected' : ''),
+      statusLabel: M2.STATUS_LABELS[statusClass] || '',
       daysInStatus, agingBucket: Utils.agingBucket(daysInStatus),
       followUpCount: Utils.isBlank(followUpCount) ? '' : followUpCount,
       isPerformance,
@@ -3165,7 +3217,7 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
     };
     if(excludeStats.allRows) excludeStats.allRows.push(fullRow);
 
-    if(statusClass === 'other') return; // only New / Not Connected variants belong in the main leads report
+    if(statusClass === 'other') return; // only New / Not Connected / Requirement Mismatch / Dump belong in the main leads report
 
     leads.push(Object.assign({}, fullRow, {
       remarks: remarks || (statusClass==='not_connected' ? 'Not specified — ask CRM/sales for a reason code' : ''),
@@ -3253,7 +3305,7 @@ M2.renderDispositionCheck = function(leads){
 
   const cols = [
     {key:'crm', label:'CRM'}, {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
-    {key:'costCentre', label:'Team Member'}, {key:'originalStatus', label:'Current Status'}, {key:'salesRemark', label:'Last Remark (Sales)'}
+    {key:'costCentre', label:'Team Member'}, {key:'salesRemark', label:'Last Remark (Sales)'}
   ];
   const filterDefs = [
     {key:'salesHead', label:'Sales Head'},
@@ -3261,7 +3313,6 @@ M2.renderDispositionCheck = function(leads){
     {key:'project', label:'Project'},
     {key:'source', label:'Source'},
     {key:'crm', label:'CRM'},
-    {key:'originalStatus', label:'Current Status'},
   ];
 
   if(!M2.dispositionTable){
@@ -3408,6 +3459,8 @@ M2.downloadDispositionByCostCentre = function(flaggedLeads){
   Utils.toast(`Exported ${sheets.length} Sales Head sheet(s) — split apart and forward each one individually.`);
 };
 
+M2.STATUS_LABELS = {new:'New', not_connected:'Not Connected', req_mismatch:'Requirement Mismatch', dump:'Dump'};
+
 M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExcluded){
   document.getElementById('m2-report').style.display = 'block';
   M2._excludedCount = excludedCount || 0;
@@ -3421,6 +3474,8 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
   leads.forEach(l=>{
     l.newMark = l.statusClass === 'new' ? '✓' : '';
     l.notConnectedMark = l.statusClass === 'not_connected' ? '✓' : '';
+    l.reqMismatchMark = l.statusClass === 'req_mismatch' ? '✓' : '';
+    l.dumpMark = l.statusClass === 'dump' ? '✓' : '';
   });
 
   const columns = [
@@ -3433,6 +3488,8 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
     {key:'costCentre', label:'Team Member (Owner)'},
     {key:'newMark', label:'New'},
     {key:'notConnectedMark', label:'Not Connected'},
+    {key:'reqMismatchMark', label:'Requirement Mismatch'},
+    {key:'dumpMark', label:'Dump'},
     {key:'daysInStatus', label:'Days Since Assigned'},
     {key:'project', label:'Project', wrap:true},
     {key:'remarks', label:'Categorized Reason', wrap:true},
@@ -3452,7 +3509,7 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
     {key:'source', label:'Source/Sub-source'},
     {key:'salesHead', label:'Sales Head'},
     {key:'costCentre', label:'Team Member (Owner)'},
-    {key:'statusLabel', label:'New / Not Connected'},
+    {key:'statusLabel', label:'Lead Status'},
     {key:'agingBucket', label:'Lead Age'},
     {key:'originalStatus', label:'Original Status'},
     {key:'flag', label:'Sales Follow-up Flag'},
@@ -3515,18 +3572,19 @@ M2.downloadTitledFlatReport = function(){
 
   const aoa = [
     [titleText],
-    ['Cost Centre (Area)', 'Team Member', 'Source', 'Sub Source', 'Channel', 'New', 'Not Connected'],
+    ['Cost Centre (Area)', 'Team Member', 'Source', 'Sub Source', 'Channel', 'New', 'Not Connected', 'Requirement Mismatch', 'Dump', 'Total'],
   ];
-  let totalNew = 0, totalNc = 0;
+  let totalNew = 0, totalNc = 0, totalRm = 0, totalDump = 0;
   rows.forEach(function(r){
-    aoa.push([r.areaCostCentre||'', r.costCentre||'', r.source||'', r.subSource||'', r.channel||'', r.newCount||0, r.notConnectedCount||0]);
-    totalNew += r.newCount||0; totalNc += r.notConnectedCount||0;
+    const t = (r.newCount||0)+(r.notConnectedCount||0)+(r.reqMismatchCount||0)+(r.dumpCount||0);
+    aoa.push([r.areaCostCentre||'', r.costCentre||'', r.source||'', r.subSource||'', r.channel||'', r.newCount||0, r.notConnectedCount||0, r.reqMismatchCount||0, r.dumpCount||0, t]);
+    totalNew += r.newCount||0; totalNc += r.notConnectedCount||0; totalRm += r.reqMismatchCount||0; totalDump += r.dumpCount||0;
   });
-  aoa.push(['TOTAL', '', '', '', '', totalNew, totalNc]);
+  aoa.push(['TOTAL', '', '', '', '', totalNew, totalNc, totalRm, totalDump, totalNew+totalNc+totalRm+totalDump]);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:22},{wch:20},{wch:12},{wch:16},{wch:10},{wch:8},{wch:14}];
-  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:6}}];
+  ws['!cols'] = [{wch:22},{wch:20},{wch:12},{wch:16},{wch:10},{wch:8},{wch:14},{wch:20},{wch:8},{wch:8}];
+  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:9}}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Report');
   XLSX.writeFile(wb, 'new_not_connected_report_' + fetchedDateLabel + '.xlsx');
@@ -3545,12 +3603,16 @@ M2.renderSummaries = function(leads){
     const key = [l.areaCostCentre, l.costCentre, l.source, l.subSource].join('||');
     if(!pivotMap[key]) pivotMap[key] = {
       areaCostCentre: l.areaCostCentre, costCentre: l.costCentre, source: l.source, subSource: l.subSource || '(not mapped)', channel: l.channel,
-      newCount:0, notConnectedCount:0
+      newCount:0, notConnectedCount:0, reqMismatchCount:0, dumpCount:0, totalCount:0
     };
-    if(l.statusClass==='new') pivotMap[key].newCount++;
-    else if(l.statusClass==='not_connected') pivotMap[key].notConnectedCount++;
+    const pr = pivotMap[key];
+    if(l.statusClass==='new') pr.newCount++;
+    else if(l.statusClass==='not_connected') pr.notConnectedCount++;
+    else if(l.statusClass==='req_mismatch') pr.reqMismatchCount++;
+    else if(l.statusClass==='dump') pr.dumpCount++;
+    pr.totalCount++;
   });
-  const pivotRows = Object.values(pivotMap).sort((a,b)=>(b.newCount+b.notConnectedCount)-(a.newCount+a.notConnectedCount));
+  const pivotRows = Object.values(pivotMap).sort((a,b)=> b.totalCount - a.totalCount);
   M2._currentPivotRows = pivotRows; // always the latest, for the grouped-export download to read regardless of when its click handler was wired
   const pivotColumns = [
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
@@ -3560,6 +3622,9 @@ M2.renderSummaries = function(leads){
     {key:'channel', label:'Channel'},
     {key:'newCount', label:'New'},
     {key:'notConnectedCount', label:'Not Connected'},
+    {key:'reqMismatchCount', label:'Requirement Mismatch'},
+    {key:'dumpCount', label:'Dump'},
+    {key:'totalCount', label:'Total'},
   ];
   const pivotFilterDefs = [
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
@@ -3575,7 +3640,7 @@ M2.renderSummaries = function(leads){
     // is different now, not just re-filtered.
     M2.summaryTable = new DataTable({
       prefix:'m2sum', columns:pivotColumns, rows:pivotRows, filterDefs:pivotFilterDefs,
-      filename:'cost_centre_team_source_summary.xlsx', pageSize:50, totalColumns:['newCount','notConnectedCount'],
+      filename:'cost_centre_team_source_summary.xlsx', pageSize:50, totalColumns:['newCount','notConnectedCount','reqMismatchCount','dumpCount','totalCount'],
       onChange: function(filteredPivotRows){
         // The pivot's OWN filter changed (not the detail table) — reconstruct which underlying
         // leads that corresponds to, and refresh just the KPI row/breakdowns to match, WITHOUT
@@ -3594,7 +3659,6 @@ M2.renderSummaries = function(leads){
 
   // ---- Not Connected reason breakdown, straight from the executive/CRM remarks ----
   M2.renderReasonAndAgingBreakdowns(leads);
-  M2.renderDispositionReasonBreakdown();
 };
 
 M2.computeAndRenderKpisAndBreakdowns = function(leads){
@@ -3604,6 +3668,8 @@ M2.computeAndRenderKpisAndBreakdowns = function(leads){
   const perfLeads = leads.filter(l=>l.isPerformance);
   const newPerf = perfLeads.filter(l=>l.statusClass==='new').length;
   const ncPerf = perfLeads.filter(l=>l.statusClass==='not_connected').length;
+  const rmPerf = perfLeads.filter(l=>l.statusClass==='req_mismatch').length;
+  const dumpPerf = perfLeads.filter(l=>l.statusClass==='dump').length;
   const affectedSources = new Set(perfLeads.map(l=>Utils.normLoose(l.source))).size;
   const noReasonCount = leads.filter(l=>l.statusClass==='not_connected' && l.remarks===NO_REASON_TEXT).length;
   const staleNC = leads.filter(l=>l.statusClass==='not_connected' && (l.agingBucket==='8–14 days' || l.agingBucket==='15–30 days' || l.agingBucket==='30+ days')).length;
@@ -3611,6 +3677,8 @@ M2.computeAndRenderKpisAndBreakdowns = function(leads){
   document.getElementById('m2-kpis').innerHTML = `
     <div class="kpi tone-red clickable" id="m2-kpi-newperf"><div class="k-label">New performance leads</div><div class="k-value">${newPerf}</div></div>
     <div class="kpi tone-red clickable" id="m2-kpi-ncperf"><div class="k-label">Not Connected performance leads</div><div class="k-value">${ncPerf}</div></div>
+    <div class="kpi tone-amber clickable" id="m2-kpi-rmperf"><div class="k-label">Requirement Mismatch performance leads</div><div class="k-value">${rmPerf}</div></div>
+    <div class="kpi tone-amber clickable" id="m2-kpi-dumpperf"><div class="k-label">Dump performance leads</div><div class="k-value">${dumpPerf}</div></div>
     <div class="kpi tone-amber"><div class="k-label">Affected sources</div><div class="k-value">${affectedSources}</div></div>
     <div class="kpi tone-red clickable" id="m2-kpi-stale"><div class="k-label">Not Connected, 8+ days old</div><div class="k-value">${staleNC}</div></div>
     <div class="kpi tone-amber clickable" id="m2-kpi-noreason"><div class="k-label">Not Connected, no reason on file</div><div class="k-value">${noReasonCount}</div></div>
@@ -3620,6 +3688,8 @@ M2.computeAndRenderKpisAndBreakdowns = function(leads){
   `;
   document.getElementById('m2-kpi-newperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'New'}));
   document.getElementById('m2-kpi-ncperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'Not Connected'}));
+  document.getElementById('m2-kpi-rmperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'Requirement Mismatch'}));
+  document.getElementById('m2-kpi-dumpperf').addEventListener('click', ()=> M2.table.setFilters({flag:'PERFORMANCE LEAD - SALES ATTENTION', statusLabel:'Dump'}));
   document.getElementById('m2-kpi-noreason').addEventListener('click', ()=> M2.table.setFilters({remarks:NO_REASON_TEXT, statusLabel:'Not Connected'}));
   document.getElementById('m2-kpi-stale').addEventListener('click', ()=>{
     M2.table.setFilters({statusLabel:'Not Connected'});
@@ -3627,75 +3697,6 @@ M2.computeAndRenderKpisAndBreakdowns = function(leads){
   });
 
   M2.renderReasonAndAgingBreakdowns(leads);
-  M2.renderDispositionReasonBreakdown();
-};
-
-/* Disposition Reason Breakdown — a filterable, lead-level table covering
-   Not Connected, Dump, and Requirement Mismatch (their "(Dump)" variants
-   folded into the same base category), showing the sales rep's OWN remark
-   for each one rather than a generic reason code. Draws from M2._allRows
-   (every status in the file), not the New/Not Connected-only leads array,
-   since Dump and Requirement Mismatch never make it into that narrower set. */
-const DISPOSITION_CATEGORIES = ['Not Connected', 'Dump', 'Requirement Mismatch'];
-M2._dispositionCategoryOf = function(originalStatus){
-  const s = String(originalStatus||'');
-  if(s.startsWith('Not Connected')) return 'Not Connected';
-  if(s.startsWith('Requirement Mismatch')) return 'Requirement Mismatch';
-  // 4QT uses plain "Dump"; LeadSquared phrases the same disposition as
-  // "Not Interested/Dump" — catching it by substring covers both without
-  // misclassifying anything else (nothing else in either CRM's status
-  // vocabulary contains the word "Dump").
-  if(s.includes('Dump') && !s.includes('Not Connected') && !s.includes('Requirement Mismatch')) return 'Dump';
-  return null;
-};
-// For Dump / Requirement Mismatch specifically: unlike Not Connected (where the
-// question is "did contact even happen"), these two statuses already imply
-// contact happened — the question is whether the lead is genuinely dead/a
-// mismatch, or still active. Any of these signals in the sales rep's own
-// remark suggests it's still being worked, which contradicts a "dead" label.
-const DUMP_MISMATCH_WRONG_RE = /\bsen[dt]\b|\bdetails?\s*shar(e|ed|ing)?\b|\bfollow\s*up\b|\bnext\s*follow\b|\bwill\s*talk\b|\bvisit\b|\bnext\s*week\b/i;
-M2._isWrongDisposition = function(l){
-  const text = [l.remarks, l.salesRemark].join(' ');
-  if(l.dispositionCategory === 'Not Connected'){
-    if(NOT_CONNECTED_NEGATION_RE.test(text)) return false; // genuinely not connected, no matter what else the text says
-    return CONTACT_EVIDENCE_RE.test(text);
-  }
-  // Dump / Requirement Mismatch
-  return DUMP_MISMATCH_WRONG_RE.test(text);
-};
-M2.renderDispositionReasonBreakdown = function(){
-  const card = document.getElementById('m2-dispreason-card');
-  const allRows = M2._allRows || [];
-  const rows = allRows
-    .map(r=>({...r, dispositionCategory: M2._dispositionCategoryOf(r.originalStatus)}))
-    .filter(r=>r.dispositionCategory)
-    .filter(r=>M2._isWrongDisposition(r));
-
-  if(!rows.length){ if(card) card.style.display='none'; return; }
-  if(card) card.style.display = 'block';
-
-  const columns = [
-    {key:'dispositionCategory', label:'Disposition'},
-    {key:'originalStatus', label:'Current Status'},
-    {key:'project', label:'Project', wrap:true},
-    {key:'source', label:'Source'},
-    {key:'salesHead', label:'Sales Head'},
-    {key:'costCentre', label:'Sales Person'},
-    {key:'salesRemark', label:'Reason (Sales Rep\'s Own Remark)', wrap:true},
-  ];
-  const filterDefs = [
-    {key:'dispositionCategory', label:'Disposition'},
-    {key:'originalStatus', label:'Current Status'},
-  ];
-
-  if(!M2.dispReasonTable){
-    M2.dispReasonTable = new DataTable({
-      prefix:'m2dispreason', columns:columns, rows:rows, filterDefs:filterDefs,
-      filename:'disposition_reasons.xlsx', pageSize:50
-    });
-  } else {
-    M2.dispReasonTable.updateRows(rows);
-  }
 };
 
 M2.renderReasonAndAgingBreakdowns = function(leads){
@@ -3800,6 +3801,7 @@ const M3_CRM_FIELDS = [
   {key:'costCentre', label:'Cost Centre / Owner Branch (optional)', required:false},
   {key:'location', label:'Location / Region (optional)', required:false},
   {key:'createdBy', label:'Created By / User Name (optional — e.g. LeadSquared\'s "Created By" field)', required:false},
+  {key:'status', label:'Lead Status (optional — e.g. "Current Status": Dump / Not Connected / Requirement Mismatch; adds a Lead Status filter)', required:false},
 ];
 
 /* Fields for the "agency sends a per-project summary" mode (e.g. a City-wise
@@ -3823,6 +3825,7 @@ const M3_CRM_SUMMARY_FIELDS = [
   {key:'channel', label:'Channel (optional — if mapped, only "Website" channel rows are counted, since that\'s what corresponds to agency-driven leads)', required:false},
   {key:'costCentre', label:'Cost Centre / Owner Branch (optional)', required:false},
   {key:'location', label:'Location / Region (optional)', required:false},
+  {key:'status', label:'Lead Status (optional — e.g. "Current Status": Dump / Not Connected / Requirement Mismatch; adds a Lead Status filter)', required:false},
 ];
 
 /* Matches one agency-reported project name against the CRM's actual project
@@ -3886,6 +3889,7 @@ M3.generate = async function(){
 M3.generateCrmOnly = async function(){
   const normalizedRows = [];
   let totalRawRows = 0;
+  let anyStatusMapped = false;
 
   if(M3.crmQt){
     const cDetected = Utils.detectColumns(M3.crmQt.headers, M3_CRM_FIELDS.map(f=>f.key), M3.crmQt.rows);
@@ -3902,7 +3906,9 @@ M3.generateCrmOnly = async function(){
         channel: cMap.channel ? Utils.val(row, cMap.channel) : '',
         createdBy: cMap.createdBy ? Utils.val(row, cMap.createdBy) : '',
         date: cMap.date ? Utils.val(row, cMap.date) : '',
+        status: cMap.status ? Utils.val(row, cMap.status) : '',
       });
+      if(cMap.status) anyStatusMapped = true;
     });
   }
 
@@ -3921,7 +3927,9 @@ M3.generateCrmOnly = async function(){
         channel: cMap.channel ? Utils.val(row, cMap.channel) : '',
         createdBy: cMap.createdBy ? Utils.val(row, cMap.createdBy) : '',
         date: cMap.date ? Utils.val(row, cMap.date) : '',
+        status: cMap.status ? Utils.val(row, cMap.status) : '',
       });
+      if(cMap.status) anyStatusMapped = true;
     });
   }
 
@@ -3937,7 +3945,7 @@ M3.generateCrmOnly = async function(){
   // Both CRMs, already normalized to the same field names — an identity mapping
   // (each field maps to itself) lets the SAME breakdown function handle either
   // CRM alone, or both combined and clearly tagged, without needing its own copy.
-  const identityMap = {project:'project', source:'source', costCentre:'costCentre', location:'location', channel:'channel', createdBy:'createdBy', date:'date', crmTag:'crmTag'};
+  const identityMap = {project:'project', source:'source', costCentre:'costCentre', location:'location', channel:'channel', createdBy:'createdBy', date:'date', crmTag:'crmTag', status: anyStatusMapped ? 'status' : null};
   M3.buildCrmProjectSourceCount(identityMap, normalizedRows);
 };
 
@@ -4028,21 +4036,23 @@ M3.buildCrmProjectSourceCount = function(cMap, crmRows){
     const createdBy = cMap.createdBy ? Utils.val(row, cMap.createdBy) : '';
     const crmTag = cMap.crmTag ? Utils.val(row, cMap.crmTag) : '';
     const channel = cMap.channel ? Utils.val(row, cMap.channel) : '';
+    const status = cMap.status ? (Utils.norm(Utils.val(row, cMap.status)) || '(blank)') : '';
     const d = cMap.date ? Utils.toDateSafe(Utils.val(row, cMap.date)) : null;
     const dateLabel = d ? Utils.formatDateShort(d) : '';
-    const dateRaw = d ? d.toISOString().slice(0,10) : '';
+    const dateRaw = d ? Utils.toISODateLocal(d) : '';
     // Sub Source is now PART of the grouping key, not just accumulated into a
     // set — this means "GT" and "GTPL" (both canonical GTF) end up as their own
     // separate rows, matching a real Source-level pivot, instead of being
     // silently merged into one combined "GT, GTPL" row.
-    const key = [project, source, sourceRaw, costCentre, location, createdBy, crmTag, channel, dateLabel].join('||');
-    if(!byKey[key]) byKey[key] = {project, source, subSource: sourceRaw || '(not mapped)', costCentre, location, createdBy, crmTag, channel, date:dateLabel, dateRaw, count:0};
+    const key = [project, source, sourceRaw, costCentre, location, createdBy, crmTag, channel, status, dateLabel].join('||');
+    if(!byKey[key]) byKey[key] = {project, source, subSource: sourceRaw || '(not mapped)', costCentre, location, createdBy, crmTag, channel, status, date:dateLabel, dateRaw, count:0};
     byKey[key].count++;
   });
 
   const rows = Object.values(byKey).map(r=>({
     project:r.project, source:r.source, subSource: r.subSource,
     costCentre: r.costCentre || '', location: r.location || '', createdBy: r.createdBy || '', crmTag: r.crmTag || '', channel: r.channel || '',
+    status: r.status || '',
     date:r.date, dateRaw:r.dateRaw, count:r.count
   })).sort((a,b)=> (b.dateRaw||'').localeCompare(a.dateRaw||'') || b.count - a.count);
   if(!rows.length){ if(card) card.style.display = 'none'; return; }
@@ -4069,6 +4079,7 @@ M3.buildCrmProjectSourceCount = function(cMap, crmRows){
   if(cMap.location) filterDefs.push({key:'location', label:'Location'});
   if(cMap.createdBy) filterDefs.push({key:'createdBy', label:'Created By'});
   if(cMap.channel) filterDefs.push({key:'channel', label:'Channel'});
+  if(cMap.status) filterDefs.push({key:'status', label:'Lead Status'});
   if(cMap.date) filterDefs.unshift({key:'dateRaw', label:'Date', type:'daterange'});
   new DataTable({
     prefix:'m3crmpsc', columns:columns, rows:rows, filterDefs:filterDefs,
@@ -4428,7 +4439,7 @@ M3.generateLeadLevel = async function(){
       const d = Utils.toDateSafe(Utils.val(row, cMap.date));
       if(d){
         crmGroups[key].dates.push(d);
-        const dRaw = d.toISOString().slice(0,10);
+        const dRaw = Utils.toISODateLocal(d);
         crmGroups[key].byDate[dRaw] = (crmGroups[key].byDate[dRaw]||0) + 1;
       }
     }
@@ -4456,7 +4467,7 @@ M3.generateLeadLevel = async function(){
       const d = Utils.toDateSafe(Utils.val(row, aMap.date));
       if(d){
         agencyGroups[key].dates.push(d);
-        const dRaw = d.toISOString().slice(0,10);
+        const dRaw = Utils.toISODateLocal(d);
         agencyGroups[key].byDate[dRaw] = (agencyGroups[key].byDate[dRaw]||0) + 1;
       }
     }
@@ -4490,8 +4501,8 @@ M3.generateLeadLevel = async function(){
           ? Utils.MONTH_ABBR[first.getMonth()]+'-'+String(first.getFullYear()).slice(-2)
           : Utils.MONTH_ABBR[first.getMonth()]+'-'+String(first.getFullYear()).slice(-2)+' to '+Utils.MONTH_ABBR[last.getMonth()]+'-'+String(last.getFullYear()).slice(-2);
         duration = Utils.formatDateShort(first) + ' to ' + Utils.formatDateShort(last);
-        dateRangeStart = first.toISOString().slice(0,10);
-        dateRangeEnd = last.toISOString().slice(0,10);
+        dateRangeStart = Utils.toISODateLocal(first);
+        dateRangeEnd = Utils.toISODateLocal(last);
       }
     }
 
