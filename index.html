@@ -188,6 +188,13 @@ button{font-family:inherit;}
   padding:5px 6px;border-radius:4px;cursor:pointer;
 }
 .ms-options label:hover{background:var(--paper);}
+.m2-status-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:4px 0 14px;}
+.m2-status-bar .sb-label{font-size:12px;font-weight:600;color:var(--text-muted);margin-right:4px;}
+.m2-status-bar .sb-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--bg);font-size:13px;cursor:pointer;user-select:none;line-height:1.2;}
+.m2-status-bar .sb-chip .sb-n{font-size:11px;font-weight:600;color:var(--text-muted);}
+.m2-status-bar .sb-chip.on{background:var(--accent, #1f6f54);border-color:var(--accent, #1f6f54);color:#fff;}
+.m2-status-bar .sb-chip.on .sb-n{color:rgba(255,255,255,.85);}
+.m2-status-bar .sb-all{background:none;border:none;color:var(--accent, #1f6f54);font-size:12px;cursor:pointer;text-decoration:underline;padding:4px;}
 /* Undo .f-field input (padding, border, min-width:150px) which was also hitting the checkboxes */
 .f-field .ms-options input[type=checkbox]{
   flex:none;width:14px;height:14px;min-width:0;margin:0;padding:0;border:0;background:none;cursor:pointer;
@@ -424,6 +431,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         <div class="mini-note" style="margin:-4px 0 12px 2px;">Click a KPI to filter the detail table below. Raw CRM data → filtered to paid sources → this one summary.</div>
         <div class="card">
           <h2>Cost Centre → Team Member → Source</h2>
+          <div class="m2-status-bar" id="m2-status-bar"></div>
           <div class="filter-bar" id="m2sum-filters"></div>
           <div class="table-wrap"><table class="data" id="m2sum-table"></table></div>
           <div class="table-foot">
@@ -437,11 +445,11 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           </div>
         </div>
         <div class="card">
-          <h2>Not Connected reason breakdown</h2>
+          <h2 id="m2-reason-title">Reason breakdown</h2>
           <div id="m2-reason-summary"></div>
         </div>
         <div class="card">
-          <h2>Aging breakdown</h2>
+          <h2 id="m2-aging-title">Aging breakdown</h2>
           <div id="m2-aging-summary"></div>
         </div>
         <div class="card">
@@ -3460,6 +3468,57 @@ M2.downloadDispositionByCostCentre = function(flaggedLeads){
 };
 
 M2.STATUS_LABELS = {new:'New', not_connected:'Not Connected', req_mismatch:'Requirement Mismatch', dump:'Dump'};
+M2.STATUS_ORDER = ['New','Not Connected','Requirement Mismatch','Dump'];
+
+/* Lead Status selector at the top of the Cost Centre → Team Member → Source table.
+   It drives the detail table's own "Lead Status" filter, so every view in this
+   module (KPIs, this table, reason + aging breakdowns, lead-level detail) follows
+   the same status choice. Changing the detail table's Lead Status filter updates
+   these chips too. */
+M2.getSelectedStatuses = function(){
+  const f = M2.table && M2.table.filters ? M2.table.filters.statusLabel : null;
+  if(f === undefined || f === null || f === '') return M2.STATUS_ORDER.slice();
+  return Array.isArray(f) ? f.slice() : [f];
+};
+M2.setSelectedStatuses = function(list){
+  if(!M2.table) return;
+  const all = list.length === 0 || list.length === M2.STATUS_ORDER.length;
+  if(all) delete M2.table.filters.statusLabel; else M2.table.filters.statusLabel = list.slice();
+  M2.table._reflectMsFilter('statusLabel', all ? null : list.slice());
+  M2.table.page = 1;
+  M2.table.render(); // → onChange → renderSummaries → everything re-renders, chips included
+};
+M2.renderStatusBar = function(){
+  const bar = document.getElementById('m2-status-bar');
+  if(!bar || !M2.table) return;
+  // Counts respect every OTHER active filter (date, cost centre, source…), just not status itself.
+  const counts = {};
+  M2.table.rows.forEach(r=>{
+    if(!M2.table._rowMatchesFilters(r, ['statusLabel'])) return;
+    counts[r.statusLabel] = (counts[r.statusLabel]||0) + 1;
+  });
+  const sel = new Set(M2.getSelectedStatuses());
+  const allOn = sel.size === M2.STATUS_ORDER.length;
+  bar.innerHTML = `<span class="sb-label">Lead Status:</span>`
+    + M2.STATUS_ORDER.map(st=>`<span class="sb-chip ${sel.has(st)?'on':''}" data-st="${Utils.escapeHtml(st)}" role="checkbox" aria-checked="${sel.has(st)}" tabindex="0">${Utils.escapeHtml(st)} <span class="sb-n">${counts[st]||0}</span></span>`).join('')
+    + (allOn ? '' : `<button type="button" class="sb-all">Show all</button>`);
+  bar.querySelectorAll('.sb-chip').forEach(chip=>{
+    const toggle = ()=>{
+      const st = chip.dataset.st;
+      let cur = M2.getSelectedStatuses();
+      // From "all", a click means "just this one" — the quickest way to switch status.
+      if(cur.length === M2.STATUS_ORDER.length) cur = [st];
+      else if(cur.includes(st)) cur = cur.filter(x=>x!==st);
+      else cur.push(st);
+      if(!cur.length) cur = M2.STATUS_ORDER.slice();
+      M2.setSelectedStatuses(M2.STATUS_ORDER.filter(x=>cur.includes(x)));
+    };
+    chip.addEventListener('click', toggle);
+    chip.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); } });
+  });
+  const allBtn = bar.querySelector('.sb-all');
+  if(allBtn) allBtn.addEventListener('click', ()=> M2.setSelectedStatuses(M2.STATUS_ORDER.slice()));
+};
 
 M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExcluded){
   document.getElementById('m2-report').style.display = 'block';
@@ -3521,6 +3580,7 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
   // stale full-dataset view once the person starts narrowing things down. The Full Status
   // Breakdown is recomputed here too, from the separate all-statuses dataset, so it stays
   // in sync with the same filters even though it includes rows this table never displays.
+  M2.table = null; // so the first onChange (fired inside the constructor) never reads a previous upload's table
   M2.table = new DataTable({
     prefix:'m2', columns:columns, rows:leads, filterDefs:filterDefs,
     filename:'new_not_connected_followup.xlsx',
@@ -3529,6 +3589,8 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
       M2.renderFullStatusBreakdown(M2.getFilteredAllRows());
     }
   });
+  M2.renderStatusBar();
+  M2.renderReasonAndAgingBreakdowns(M2.table._filteredRows());
 };
 
 /* Flat report matching a specific format the person already uses/shares — a
@@ -3592,6 +3654,7 @@ M2.downloadTitledFlatReport = function(){
 };
 
 M2.renderSummaries = function(leads){
+  M2.renderStatusBar();
   M2._allFilteredLeads = leads; // the detail table's current filtered set — pivot rows are always derived from this
   M2.computeAndRenderKpisAndBreakdowns(leads);
 
@@ -3701,7 +3764,14 @@ M2.computeAndRenderKpisAndBreakdowns = function(leads){
 
 M2.renderReasonAndAgingBreakdowns = function(leads){
   const NO_REASON_TEXT = 'Not specified — ask CRM/sales for a reason code';
-  const ncLeads = leads.filter(l=>l.statusClass==='not_connected');
+  // Follows the Lead Status selector (all selected statuses), not Not Connected only.
+  const ncLeads = leads;
+  const selStatuses = M2.getSelectedStatuses();
+  const statusText = selStatuses.length === M2.STATUS_ORDER.length ? 'all statuses' : selStatuses.join(', ');
+  const rt = document.getElementById('m2-reason-title');
+  if(rt) rt.innerHTML = `Reason breakdown <small>${Utils.escapeHtml(statusText)}</small>`;
+  const at = document.getElementById('m2-aging-title');
+  if(at) at.innerHTML = `Aging breakdown <small>${Utils.escapeHtml(statusText)}</small>`;
   const byReason = {};
   ncLeads.forEach(l=>{
     const key = l.remarks || NO_REASON_TEXT;
@@ -3711,7 +3781,7 @@ M2.renderReasonAndAgingBreakdowns = function(leads){
   const reasonEl = document.getElementById('m2-reason-summary');
   if(reasonRows.length){
     reasonEl.innerHTML = `<table class="attach-table">
-      <tr><th>Remarks / Reason (as logged by CRM / executive)</th><th>Not Connected Count</th></tr>
+      <tr><th>Remarks / Reason (as logged by CRM / executive)</th><th>Lead Count</th></tr>
       ${reasonRows.map(([reason,count],i)=>`<tr class="clickable-row" data-r-idx="${i}">
         <td>${Utils.escapeHtml(reason)}</td><td>${count}</td>
       </tr>`).join('')}
@@ -3719,11 +3789,13 @@ M2.renderReasonAndAgingBreakdowns = function(leads){
     reasonEl.querySelectorAll('tr[data-r-idx]').forEach(tr=>{
       tr.addEventListener('click', ()=>{
         const reason = reasonRows[+tr.dataset.rIdx][0];
-        M2.table.setFilters({remarks: reason, statusLabel: 'Not Connected'});
+        // Keeps the current Lead Status selection; blank remarks can't be matched as a filter value.
+        if(reason === NO_REASON_TEXT){ Utils.toast('These leads have no remark on file.'); return; }
+        M2.table.setFilters({remarks: reason}, true);
       });
     });
   } else {
-    reasonEl.innerHTML = `<div class="empty-state">No Not Connected leads found in the uploaded file(s).</div>`;
+    reasonEl.innerHTML = `<div class="empty-state">No leads found for the selected status.</div>`;
   }
 
   // ---- Aging breakdown: how long Not Connected leads have been sitting ----
@@ -3742,13 +3814,13 @@ M2.renderReasonAndAgingBreakdowns = function(leads){
   const hasFollowUpData = ncLeads.some(l=>l.followUpCount!=='');
   if(ageRows.length){
     ageEl.innerHTML = `<table class="attach-table">
-      <tr><th>Age (since assigned/created)</th><th>Not Connected Count</th>${hasFollowUpData?'<th>With ≥1 follow-up logged</th><th>Zero follow-ups logged</th><th>Follow-up not tracked</th>':''}</tr>
+      <tr><th>Age (since assigned/created)</th><th>Lead Count</th>${hasFollowUpData?'<th>With ≥1 follow-up logged</th><th>Zero follow-ups logged</th><th>Follow-up not tracked</th>':''}</tr>
       ${ageRows.map((r,i)=>`<tr class="clickable-row" data-a-idx="${i}">
         <td>${Utils.escapeHtml(r.bucket)}</td><td>${r.count}</td>${hasFollowUpData?`<td>${r.followedUp}</td><td>${r.noFollowUp}</td><td>${r.notTracked}</td>`:''}
       </tr>`).join('')}
     </table>${hasFollowUpData?'':'<div class="mini-note">Follow-up count isn\'t tracked in this CRM export, so that breakdown isn\'t shown — the Days Since Assigned column is still available in the detail table below.</div>'}`;
     ageEl.querySelectorAll('tr[data-a-idx]').forEach(tr=>{
-      tr.addEventListener('click', ()=> M2.table.setFilters({agingBucket: ageRows[+tr.dataset.aIdx].bucket, statusLabel:'Not Connected'}));
+      tr.addEventListener('click', ()=> M2.table.setFilters({agingBucket: ageRows[+tr.dataset.aIdx].bucket}, true));
     });
   } else {
     ageEl.innerHTML = `<div class="empty-state">No Not Connected leads found in the uploaded file(s).</div>`;
