@@ -404,7 +404,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
 
       <div id="m2-report" style="display:none;">
         <div class="card" id="m2-disposition-card" style="display:none;">
-          <h2>Lead Disposition Audit <small>Flags Not Connected leads whose own remark says contact was actually made — helps catch a wrong disposition by the sales rep</small></h2>
+          <h2>Lead Disposition Audit <small>Flags leads whose own remark says contact was actually made — pick the Lead Status to audit (starts on Not Connected) to catch a wrong disposition by the sales rep</small></h2>
           <div class="kpi-row" id="m2-disposition-headline"></div>
           <div class="filter-bar" id="m2disp-filters"></div>
           <div id="m2disp-grouped-view" style="margin-top:16px;"></div>
@@ -3297,8 +3297,11 @@ const CONTACT_EVIDENCE_RE = /\b(shared|sent|discussed|explained|informed|spoke|s
 M2.renderDispositionCheck = function(leads){
   const card = document.getElementById('m2-disposition-card');
 
+  // Every status is audited now (New / Not Connected / Requirement Mismatch / Dump,
+  // including "(Dump)" variants); the Lead Status filter below picks which ones
+  // to look at. It starts on "Not Connected", which was this audit's original scope.
   const wrongNotConnected = leads.filter(l=>{
-    if(l.statusClass !== 'not_connected') return false;
+    if(l.statusClass === 'other') return false;
     const text = [l.remarks, l.salesRemark].join(' ');
     if(NOT_CONNECTED_NEGATION_RE.test(text)) return false; // genuinely not connected, no matter what else the text says
     return CONTACT_EVIDENCE_RE.test(text);
@@ -3307,15 +3310,20 @@ M2.renderDispositionCheck = function(leads){
   if(!wrongNotConnected.length){ if(card) card.style.display='none'; return; }
   if(card) card.style.display = 'block';
 
-  document.getElementById('m2-disposition-headline').innerHTML = `
-    <div class="kpi tone-red"><div class="k-label">Not Connected, but the remark shows contact was actually made</div><div class="k-value">${wrongNotConnected.length}</div></div>
-  `;
+  M2._renderDispositionHeadline = function(rows){
+    const f = M2.dispositionTable && M2.dispositionTable.filters ? M2.dispositionTable.filters.originalStatus : null;
+    const statusText = !f ? 'Any status' : (Array.isArray(f) ? (f.length ? f.join(', ') : 'No status selected') : f);
+    document.getElementById('m2-disposition-headline').innerHTML = `
+      <div class="kpi tone-red"><div class="k-label">${Utils.escapeHtml(statusText)} — but the remark shows contact was actually made</div><div class="k-value">${rows.length}</div></div>
+    `;
+  };
 
   const cols = [
     {key:'crm', label:'CRM'}, {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
-    {key:'costCentre', label:'Team Member'}, {key:'salesRemark', label:'Last Remark (Sales)'}
+    {key:'costCentre', label:'Team Member'}, {key:'originalStatus', label:'Lead Status'}, {key:'salesRemark', label:'Last Remark (Sales)'}
   ];
   const filterDefs = [
+    {key:'originalStatus', label:'Lead Status'},
     {key:'salesHead', label:'Sales Head'},
     {key:'costCentre', label:'Team Member'},
     {key:'project', label:'Project'},
@@ -3330,13 +3338,22 @@ M2.renderDispositionCheck = function(leads){
       onChange: function(filteredRows){
         M2._dispositionFilteredRows = filteredRows;
         M2._renderDispositionGrouped(filteredRows);
+        M2._renderDispositionHeadline(filteredRows);
       }
     });
+    // Default: plain "Not Connected" (the original audit), if that value exists.
+    if(wrongNotConnected.some(l=>l.originalStatus === 'Not Connected')){
+      M2.dispositionTable.filters.originalStatus = ['Not Connected'];
+      M2.dispositionTable._reflectMsFilter('originalStatus', ['Not Connected']);
+    }
+    M2.dispositionTable.render();
   } else {
     M2.dispositionTable.updateRows(wrongNotConnected);
   }
-  M2._dispositionFilteredRows = wrongNotConnected;
-  M2._renderDispositionGrouped(wrongNotConnected);
+  const dispRows = M2.dispositionTable._filteredRows();
+  M2._dispositionFilteredRows = dispRows;
+  M2._renderDispositionGrouped(dispRows);
+  M2._renderDispositionHeadline(dispRows);
 
   document.getElementById('m2-dl-wrongnc').onclick = ()=> Utils.downloadExcel(M2._dispositionFilteredRows || wrongNotConnected, cols, 'not_connected_with_contact_evidence.xlsx');
 
@@ -3378,8 +3395,8 @@ M2._renderDispositionGrouped = function(rows){
           <span>${Utils.escapeHtml(head)}</span><span>Total: ${leads.length}</span>
         </div>
         <table class="attach-table" style="margin:0;">
-          <tr><th>Sales Person</th><th>Project</th><th>Source</th><th>Last Remark (Sales)</th></tr>
-          ${sortedLeads.map(l=>`<tr><td>${Utils.escapeHtml(l.costCentre||'')}</td><td>${Utils.escapeHtml(l.project||'')}</td><td>${Utils.escapeHtml(l.source||'')}</td><td>${Utils.escapeHtml(l.salesRemark||'')}</td></tr>`).join('')}
+          <tr><th>Sales Person</th><th>Project</th><th>Source</th><th>Lead Status</th><th>Last Remark (Sales)</th></tr>
+          ${sortedLeads.map(l=>`<tr><td>${Utils.escapeHtml(l.costCentre||'')}</td><td>${Utils.escapeHtml(l.project||'')}</td><td>${Utils.escapeHtml(l.source||'')}</td><td>${Utils.escapeHtml(l.originalStatus||'')}</td><td>${Utils.escapeHtml(l.salesRemark||'')}</td></tr>`).join('')}
         </table>
       </div>`;
     }).join('');
@@ -3399,18 +3416,18 @@ M2.downloadDispositionGrouped = function(rows){
   });
   const heads = Object.entries(byHead).sort((a,b)=>b[1].length-a[1].length);
 
-  const aoa = [['Sales Head', 'Total', '', '']];
+  const aoa = [['Sales Head', 'Total', '', '', '']];
   heads.forEach(([head, leads])=>{
-    aoa.push([head.toUpperCase(), leads.length, '', '']);
-    aoa.push(['Sales Person', 'Project', 'Source', 'Last Remark (Sales)']);
+    aoa.push([head.toUpperCase(), leads.length, '', '', '']);
+    aoa.push(['Sales Person', 'Project', 'Source', 'Lead Status', 'Last Remark (Sales)']);
     leads.slice().sort((a,b)=>(a.costCentre||'').localeCompare(b.costCentre||'')).forEach(l=>{
-      aoa.push([l.costCentre||'', l.project||'', l.source||'', l.salesRemark||'']);
+      aoa.push([l.costCentre||'', l.project||'', l.source||'', l.originalStatus||'', l.salesRemark||'']);
     });
-    aoa.push(['', '', '', '']); // blank spacer row between Sales Heads
+    aoa.push(['', '', '', '', '']); // blank spacer row between Sales Heads
   });
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:22},{wch:22},{wch:12},{wch:50}];
+  ws['!cols'] = [{wch:22},{wch:22},{wch:12},{wch:22},{wch:50}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Wrong Disposition');
   XLSX.writeFile(wb, 'wrong_disposition_by_sales_head.xlsx');
@@ -3440,15 +3457,15 @@ M2.downloadDispositionByCostCentre = function(flaggedLeads){
 
     const aoa = [
       [`Wrong Disposition Report — ${salesHead}`],
-      [`Not Connected leads whose own remark shows contact was actually made — ${leads.length} total`],
+      [`Leads (${Array.from(new Set(leads.map(l=>l.originalStatus||''))).join(', ')}) whose own remark shows contact was actually made — ${leads.length} total`],
       [],
       ['Summary — by Team Member'],
       ['Team Member', 'Flagged Lead Count'],
       ...memberRows.map(([m,c])=>[m,c]),
       [],
       ['Detail — Every Flagged Lead'],
-      ['CRM','Project','Source','Team Member','Remark','Last Remark (Sales)'],
-      ...leads.map(l=>[l.crm||'', l.project||'', l.source||'', l.costCentre||'', l.remarks||'', l.salesRemark||'']),
+      ['CRM','Project','Source','Team Member','Lead Status','Remark','Last Remark (Sales)'],
+      ...leads.map(l=>[l.crm||'', l.project||'', l.source||'', l.costCentre||'', l.originalStatus||'', l.remarks||'', l.salesRemark||'']),
     ];
     return {name: salesHead, aoa};
   });
@@ -3475,6 +3492,14 @@ M2.STATUS_ORDER = ['New','Not Connected','Requirement Mismatch','Dump'];
    module (KPIs, this table, reason + aging breakdowns, lead-level detail) follows
    the same status choice. Changing the detail table's Lead Status filter updates
    these chips too. */
+M2.DEFAULT_STATUSES = ['New','Not Connected'];
+M2.STATUS_COUNT_KEY = {'New':'newCount','Not Connected':'notConnectedCount','Requirement Mismatch':'reqMismatchCount','Dump':'dumpCount'};
+M2.pivotStatusColumns = function(){
+  const sel = M2.getSelectedStatuses();
+  const cols = sel.map(st=>({key:M2.STATUS_COUNT_KEY[st], label:st}));
+  if(sel.length > 1) cols.push({key:'totalCount', label:'Total'});
+  return cols;
+};
 M2.getSelectedStatuses = function(){
   const f = M2.table && M2.table.filters ? M2.table.filters.statusLabel : null;
   if(f === undefined || f === null || f === '') return M2.STATUS_ORDER.slice();
@@ -3589,8 +3614,9 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
       M2.renderFullStatusBreakdown(M2.getFilteredAllRows());
     }
   });
-  M2.renderStatusBar();
-  M2.renderReasonAndAgingBreakdowns(M2.table._filteredRows());
+  // Default view = New + Not Connected (what this module is for); Requirement
+  // Mismatch and Dump are one click away in the Lead Status bar.
+  M2.setSelectedStatuses(M2.DEFAULT_STATUSES.slice());
 };
 
 /* Flat report matching a specific format the person already uses/shares — a
@@ -3634,19 +3660,20 @@ M2.downloadTitledFlatReport = function(){
 
   const aoa = [
     [titleText],
-    ['Cost Centre (Area)', 'Team Member', 'Source', 'Sub Source', 'Channel', 'New', 'Not Connected', 'Requirement Mismatch', 'Dump', 'Total'],
+    ['Cost Centre (Area)', 'Team Member', 'Source', 'Sub Source', 'Channel'].concat(M2.pivotStatusColumns().map(c=>c.label)),
   ];
-  let totalNew = 0, totalNc = 0, totalRm = 0, totalDump = 0;
+  const statusCols = M2.pivotStatusColumns();
+  const totals = statusCols.map(()=>0);
   rows.forEach(function(r){
-    const t = (r.newCount||0)+(r.notConnectedCount||0)+(r.reqMismatchCount||0)+(r.dumpCount||0);
-    aoa.push([r.areaCostCentre||'', r.costCentre||'', r.source||'', r.subSource||'', r.channel||'', r.newCount||0, r.notConnectedCount||0, r.reqMismatchCount||0, r.dumpCount||0, t]);
-    totalNew += r.newCount||0; totalNc += r.notConnectedCount||0; totalRm += r.reqMismatchCount||0; totalDump += r.dumpCount||0;
+    const vals = statusCols.map(c=>r[c.key]||0);
+    vals.forEach((v,i)=> totals[i] += v);
+    aoa.push([r.areaCostCentre||'', r.costCentre||'', r.source||'', r.subSource||'', r.channel||''].concat(vals));
   });
-  aoa.push(['TOTAL', '', '', '', '', totalNew, totalNc, totalRm, totalDump, totalNew+totalNc+totalRm+totalDump]);
+  aoa.push(['TOTAL', '', '', '', ''].concat(totals));
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:22},{wch:20},{wch:12},{wch:16},{wch:10},{wch:8},{wch:14},{wch:20},{wch:8},{wch:8}];
-  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:9}}];
+  ws['!cols'] = [{wch:22},{wch:20},{wch:12},{wch:16},{wch:10}].concat(statusCols.map(c=>({wch:Math.max(8, c.label.length+2)})));
+  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:4+statusCols.length}}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Report');
   XLSX.writeFile(wb, 'new_not_connected_report_' + fetchedDateLabel + '.xlsx');
@@ -3675,20 +3702,25 @@ M2.renderSummaries = function(leads){
     else if(l.statusClass==='dump') pr.dumpCount++;
     pr.totalCount++;
   });
-  const pivotRows = Object.values(pivotMap).sort((a,b)=> b.totalCount - a.totalCount);
+  let pivotRows = Object.values(pivotMap).sort((a,b)=> b.totalCount - a.totalCount);
   M2._currentPivotRows = pivotRows; // always the latest, for the grouped-export download to read regardless of when its click handler was wired
+  // Count columns follow the Lead Status bar: only the selected statuses get a
+  // column, and Total only appears when more than one is selected.
+  const statusCols = M2.pivotStatusColumns();
   const pivotColumns = [
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
     {key:'costCentre', label:'Team Member'},
     {key:'source', label:'Source'},
     {key:'subSource', label:'Sub Source'},
     {key:'channel', label:'Channel'},
-    {key:'newCount', label:'New'},
-    {key:'notConnectedCount', label:'Not Connected'},
-    {key:'reqMismatchCount', label:'Requirement Mismatch'},
-    {key:'dumpCount', label:'Dump'},
-    {key:'totalCount', label:'Total'},
-  ];
+  ].concat(statusCols);
+  const colsKey = statusCols.map(c=>c.key).join(',');
+  if(M2.summaryTable && M2._pivotColsKey !== colsKey){
+    // Column set changed — rebuild the table, carrying over its own filters.
+    M2._pivotCarryFilters = Object.assign({}, M2.summaryTable.filters);
+    M2.summaryTable = null;
+  }
+  M2._pivotColsKey = colsKey;
   const pivotFilterDefs = [
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
     {key:'costCentre', label:'Team Member'},
@@ -3703,7 +3735,7 @@ M2.renderSummaries = function(leads){
     // is different now, not just re-filtered.
     M2.summaryTable = new DataTable({
       prefix:'m2sum', columns:pivotColumns, rows:pivotRows, filterDefs:pivotFilterDefs,
-      filename:'cost_centre_team_source_summary.xlsx', pageSize:50, totalColumns:['newCount','notConnectedCount','reqMismatchCount','dumpCount','totalCount'],
+      filename:'cost_centre_team_source_summary.xlsx', pageSize:50, totalColumns: statusCols.map(c=>c.key),
       onChange: function(filteredPivotRows){
         // The pivot's OWN filter changed (not the detail table) — reconstruct which underlying
         // leads that corresponds to, and refresh just the KPI row/breakdowns to match, WITHOUT
@@ -3716,6 +3748,12 @@ M2.renderSummaries = function(leads){
     });
     const titledBtn = document.getElementById('m2sum-dl-titled');
     if(titledBtn) titledBtn.onclick = ()=> M2.downloadTitledFlatReport();
+    const carry = M2._pivotCarryFilters; M2._pivotCarryFilters = null;
+    if(carry && Object.keys(carry).length){
+      M2.summaryTable.filters = carry;
+      Object.keys(carry).forEach(k=> M2.summaryTable._reflectMsFilter(k, carry[k]));
+      M2.summaryTable.render();
+    }
   } else {
     M2.summaryTable.updateRows(pivotRows);
   }
