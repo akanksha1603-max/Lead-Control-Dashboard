@@ -404,7 +404,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
 
       <div id="m2-report" style="display:none;">
         <div class="card" id="m2-disposition-card" style="display:none;">
-          <h2>Lead Disposition Audit <small>Pick a Lead Status, then choose to see only wrongly-dispositioned leads (remark shows contact was made — for Requirement Mismatch, the Sales remark names the same project the lead came for) or every lead of that status with its reason</small></h2>
+          <h2>Lead Disposition Audit <small>Pick a Lead Status, then choose to see only wrongly-dispositioned leads (remark shows contact was made — for Requirement Mismatch, the Sales remark names the lead's own project or says details were shared/sent) or every lead of that status with its reason</small></h2>
           <div class="m2-status-bar" id="m2disp-mode-bar" role="radiogroup" aria-label="Which leads to show">
             <span class="sb-label">Show:</span>
             <span class="sb-chip on" data-mode="flagged" role="radio" aria-checked="true" tabindex="0">Only wrong disposition (remark shows contact)</span>
@@ -3304,6 +3304,9 @@ const CONTACT_EVIDENCE_RE = /\b(shared|sent|discussed|explained|informed|spoke|s
    disposition when the Sales remark names the same project the lead came for
    (the customer was discussing that very project). Locality-style mentions
    ("in Madhavaram location", "near Vanagaram") are not counted as the project. */
+/* Requirement Mismatch is also a wrong disposition when the Sales remark says
+   project details were shared / sent (e.g. "Details shared", "sent him the details"). */
+const DETAILS_SHARED_RE = /\bdetails?\s+(have\s+been\s+|has\s+been\s+|been\s+|were\s+|was\s+|are\s+|is\s+)?(shared|sent|send|share)\b|\b(shared|sent|send|share|sending|sharing)\s+(him\s+|her\s+|them\s+|the\s+|all\s+|project\s+|property\s+|of\s+|on\s+whatsapp\s+)*details?\b/i;
 M2.isReqMismatchStatus = function(s){
   return /requirement\s*mis\s*match|mis\s*match|mis\s*requirement|req(uirement)?\s*mismatch/.test(Utils.normLoose(s));
 };
@@ -3373,8 +3376,12 @@ M2.renderDispositionCheck = function(leads){
     // remark names the same project the lead came for.
     if(M2.isReqMismatchStatus(l.originalStatus)){
       const hit = M2.remarkNamesProject(l.project, l.salesRemark);
-      if(hit) l.flagReason = 'Remark names the lead\'s own project ("' + hit + '")';
-      return !!hit;
+      const shared = DETAILS_SHARED_RE.test(l.salesRemark || '');
+      const why = [];
+      if(hit) why.push('Remark names the lead\'s own project ("' + hit + '")');
+      if(shared) why.push('Remark says details were shared/sent');
+      l.flagReason = why.join('; ');
+      return !!(hit || shared);
     }
     const text = [l.remarks, l.salesRemark].join(' ');
     if(NOT_CONNECTED_NEGATION_RE.test(text)) return false; // genuinely not connected, no matter what else the text says
@@ -3391,8 +3398,8 @@ M2.renderDispositionCheck = function(leads){
     const label = M2._dispMode === 'all'
       ? `All ${Utils.escapeHtml(statusText)} leads`
       : (/^(requirement mismatch[^,]*)(, requirement mismatch[^,]*)*$/i.test(statusText)
-          ? `${Utils.escapeHtml(statusText)} — but the Sales remark names the same project the lead came for`
-          : `${Utils.escapeHtml(statusText)} — flagged as wrong disposition (Requirement Mismatch: remark names the lead's own project; other statuses: remark shows contact was made)`);
+          ? `${Utils.escapeHtml(statusText)} — but the Sales remark names the lead's own project or says details were shared/sent`
+          : `${Utils.escapeHtml(statusText)} — flagged as wrong disposition (Requirement Mismatch: remark names the lead's own project or says details were shared/sent; other statuses: remark shows contact was made)`);
     document.getElementById('m2-disposition-headline').innerHTML = `
       <div class="kpi ${M2._dispMode === 'all' ? '' : 'tone-red'}"><div class="k-label">${label}</div><div class="k-value">${rows.length}</div></div>
     `;
