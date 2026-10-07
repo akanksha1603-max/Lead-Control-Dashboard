@@ -404,7 +404,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
 
       <div id="m2-report" style="display:none;">
         <div class="card" id="m2-disposition-card" style="display:none;">
-          <h2>Lead Disposition Audit <small>Pick a Lead Status, then choose to see only wrongly-dispositioned leads (remark shows contact was made) or every lead of that status with its reason</small></h2>
+          <h2>Lead Disposition Audit <small>Pick a Lead Status, then choose to see only wrongly-dispositioned leads (remark shows contact was made — for Requirement Mismatch, the Sales remark names the same project the lead came for) or every lead of that status with its reason</small></h2>
           <div class="m2-status-bar" id="m2disp-mode-bar" role="radiogroup" aria-label="Which leads to show">
             <span class="sb-label">Show:</span>
             <span class="sb-chip on" data-mode="flagged" role="radio" aria-checked="true" tabindex="0">Only wrong disposition (remark shows contact)</span>
@@ -3299,6 +3299,47 @@ M2.renderFullStatusBreakdown = function(filtered){
 const NOT_CONNECTED_NEGATION_RE = /\bnot\s*(connected|reachable|picking|pick(ed)?|answering|responding|responded|able\s*to\s*(connect|reach))\b|\bno\s*(response|answer|reply)\b|\bswitch(ed)?\s*off\b|\bunreachable\b|\bdid\s*not\s*(answer|pick|respond|connect)\b|\bunable\s*to\s*(connect|reach)\b|\bcall\s*not\s*(connect|answer|pick(ed)?)\b|\bcnp\b|\bbusy\b|\bnumber\s*(not\s*reachable|switched?\s*off|busy)\b|\bringing\b.*\bno\s*response\b|\bdisconnected\b|\b(will|plan\s*to|need\s*to|has\s*to|have\s*to|to)\s*(follow\s*up|call\s*back)\b|\bfollow\s*up\s*(scheduled|pending|due|later|tomorrow|required)\b/i;
 const CONTACT_EVIDENCE_RE = /\b(shared|sent|discussed|explained|informed|spoke|spoken|briefed|walked\s*through|provided|chat(ted)?|in\s*follow\s*up|follow\s*up\s*(going\s*on|ongoing|in\s*progress|continues?|continuing))\b/i;
 
+
+/* Requirement Mismatch audit: a lead marked Requirement Mismatch is a wrong
+   disposition when the Sales remark names the same project the lead came for
+   (the customer was discussing that very project). Locality-style mentions
+   ("in Madhavaram location", "near Vanagaram") are not counted as the project. */
+M2.isReqMismatchStatus = function(s){
+  return /requirement\s*mis\s*match|mis\s*match|mis\s*requirement|req(uirement)?\s*mismatch/.test(Utils.normLoose(s));
+};
+const PM_LOC = new Set('noida greater delhi new gurgaon gurugram ghaziabad faridabad bangalore bengaluru chennai hyderabad pune mumbai navi thane kolkata kochi ncr yamuna expressway north south east west road sector'.split(' '));
+const PM_GEN = new Set('phase ph tower towers the and by at in of project i ii iii iv v 1 2 3 4 residences residency homes home apartments apartment city township enclave heights avenue park estate estates villas villa plots plot'.split(' '));
+const PM_DEV = new Set('prestige brigade godrej sobha omaxe tata mahindra provident puravankara purva hero gaur eldeco ace m3m dlf lodha hiranandani krisala shriram kolte patil assetz embassy birla adani ats mahagun supertech skytech sattva casagrand casa grand mantri salarpuria total environment century jp infra dtc'.split(' '));
+const PM_COMMON = new Set('connect one prime grand royal green greens life square central point plaza garden gardens view vista hills bay river lake world nest'.split(' '));
+M2._pmNorm = function(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim(); }
+M2.remarkNamesProject = function(project, remark){
+  const r = M2._pmNorm(remark), p = M2._pmNorm(project);
+  if(!r || !p) return '';
+  const toks = p.split(' ').filter(t=>!PM_LOC.has(t));
+  const core = toks.filter(t=>!PM_GEN.has(t));
+  const dist = core.filter(t=>!PM_DEV.has(t) && !PM_COMMON.has(t) && t.length>=4 && !/^\d+$/.test(t));
+  if(dist.length){
+    const rc = r.replace(/ /g,'');
+    for(const t of dist){
+      const re = new RegExp('\\b'+t+'\\b','g'); let m;
+      while((m = re.exec(r))){
+        const after = r.slice(m.index+t.length, m.index+t.length+25);
+        const before = r.slice(Math.max(0,m.index-30), m.index).trim().split(' ');
+        const w1 = before[before.length-1]||'', w2 = before[before.length-2]||'';
+        // the word used as a place ("in madhavaram location", "near vanagaram") is a locality, not the project
+        if(/^\s*(location|locations|area|side|region|nearby|surrounding|belt|only)\b/.test(after)) continue;
+        if(w1 === 'near') continue;
+        if(/^(in|at|around)$/.test(w1) && !/^(interested|visit|visited|details|booked|booking|pitched|suggested)$/.test(w2)) continue;
+        return t;
+      }
+      // written without spaces/with spaces differently, e.g. "park lane" vs "parklane"
+      if(t.length>=6 && rc.indexOf(t)>=0 && !new RegExp('\\b'+t+'\\b').test(r)) return t;
+    }
+    return '';
+  }
+  return (core.length && core.every(t=>new RegExp('\\b'+t+'\\b').test(r))) ? core.join(' ') : '';
+}
+
 M2._dispMode = 'flagged';
 M2._bindDispositionModeBar = function(){
   const bar = document.getElementById('m2disp-mode-bar');
@@ -3325,11 +3366,20 @@ M2.renderDispositionCheck = function(leads){
   M2._dispAllLeads = leads;
   const showAll = M2._dispMode === 'all';
   const wrongNotConnected = leads.filter(l=>{
+    l.flagReason = '';
     if(l.statusClass === 'other') return false;
     if(showAll) return true;
+    // Requirement Mismatch (incl. "(Dump)" variants): flagged ONLY when the Sales
+    // remark names the same project the lead came for.
+    if(M2.isReqMismatchStatus(l.originalStatus)){
+      const hit = M2.remarkNamesProject(l.project, l.salesRemark);
+      if(hit) l.flagReason = 'Remark names the lead\'s own project ("' + hit + '")';
+      return !!hit;
+    }
     const text = [l.remarks, l.salesRemark].join(' ');
     if(NOT_CONNECTED_NEGATION_RE.test(text)) return false; // genuinely not connected, no matter what else the text says
-    return CONTACT_EVIDENCE_RE.test(text);
+    if(CONTACT_EVIDENCE_RE.test(text)){ l.flagReason = 'Remark shows contact was made'; return true; }
+    return false;
   });
 
   if(!wrongNotConnected.length){ if(card) card.style.display='none'; return; }
@@ -3340,7 +3390,9 @@ M2.renderDispositionCheck = function(leads){
     const statusText = !f ? 'Any status' : (Array.isArray(f) ? (f.length ? f.join(', ') : 'No status selected') : f);
     const label = M2._dispMode === 'all'
       ? `All ${Utils.escapeHtml(statusText)} leads`
-      : `${Utils.escapeHtml(statusText)} — but the remark shows contact was actually made`;
+      : (/^(requirement mismatch[^,]*)(, requirement mismatch[^,]*)*$/i.test(statusText)
+          ? `${Utils.escapeHtml(statusText)} — but the Sales remark names the same project the lead came for`
+          : `${Utils.escapeHtml(statusText)} — flagged as wrong disposition (Requirement Mismatch: remark names the lead's own project; other statuses: remark shows contact was made)`);
     document.getElementById('m2-disposition-headline').innerHTML = `
       <div class="kpi ${M2._dispMode === 'all' ? '' : 'tone-red'}"><div class="k-label">${label}</div><div class="k-value">${rows.length}</div></div>
     `;
@@ -3349,7 +3401,8 @@ M2.renderDispositionCheck = function(leads){
 
   const cols = [
     {key:'crm', label:'CRM'}, {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
-    {key:'costCentre', label:'Team Member'}, {key:'originalStatus', label:'Lead Status'}, {key:'remarks', label:'Reason (e.g. Dump Reason)'}, {key:'salesRemark', label:'Last Remark (Sales)'}
+    {key:'costCentre', label:'Team Member'}, {key:'originalStatus', label:'Lead Status'}, {key:'remarks', label:'Reason (e.g. Dump Reason)'}, {key:'salesRemark', label:'Last Remark (Sales)'},
+    {key:'flagReason', label:'Why flagged'}
   ];
   const filterDefs = [
     {key:'originalStatus', label:'Lead Status'},
