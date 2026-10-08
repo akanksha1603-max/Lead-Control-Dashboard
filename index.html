@@ -1372,6 +1372,7 @@ Utils.COLUMN_ALIASES = {
   crm:          ['CRM','CRM Name','CRM System'],
   remarks:      ['Dump Reason','Not Connected Reason','Sub Status','Sub-Status','Disposition Remarks','Reason','Remarks','Comments','Status Remarks','Call Status Remarks'],
   salesRemark:  ['Last Remarks(Sales)','Last Remark (Sales)','Sales Remarks','Sales Follow-up Remark','Follow-up Remarks','Followup Remarks','Last Remarks','Last Remark','Last Remarks(Caller)','Call Remarks','Remarks','Remark'],
+  leadId:       ['Enquiry No.','Enquiry No','Enquiry Number','Enquiry ID','Opportunity Auto ID','Lead Number','Lead ID','Prospect Auto Id','Opportunity Id'],
   leadName:     ['Lead Name','Prospect Name','Full Name','Customer Name','Contact Name','Customer','Name'],
   location:     ['Region','City','Location','Area','Branch','Owner Branch','Handler Branch'],
   userName:     ['User Name','User','Owner (User Name)','CRM User','Enquiry Owner','Handled By','Lead Owner','Owner','Assigned To'],
@@ -3037,7 +3038,8 @@ const M2_FIELDS = [
   {key:'date', label:'Date Assigned (e.g. Enquiry Date / Created On)', required:false},
   {key:'ageField', label:'Lead Age in days (optional — e.g. "Opportunity Age"; calculated from Date if not present)', required:false},
   {key:'followUpCount', label:'Follow-up Count (optional — e.g. "Follow Up Counter"; left blank if not tracked)', required:false},
-  {key:'leadName', label:'Lead Name (optional, helps identify the lead)', required:false},
+  {key:'leadId', label:'Enquiry No. / Lead ID (e.g. 4QT "Enquiry No.", LeadSquared "Opportunity Auto ID") — shown in the Wrong Disposition report', required:false},
+  {key:'leadName', label:'Customer / Lead Name (e.g. 4QT "Customer", LeadSquared "Contact Name") — shown in the Wrong Disposition report', required:false},
   {key:'location', label:'Region (e.g. LeadSquared "Region" — used to look up Cost Centre when there\'s no branch column)', required:false},
   {key:'crm', label:'CRM (leave unmapped to auto-identify by location)', required:false},
 ];
@@ -3126,6 +3128,7 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
     const ageRaw = Utils.val(row, map.ageField);
     const followUpCount = Utils.val(row, map.followUpCount);
     const leadName = Utils.val(row, map.leadName);
+    const leadId = Utils.val(row, map.leadId);
     const locationText = Utils.val(row, map.location);
     if(Utils.isBlank(originalStatus)) return; // can't classify
 
@@ -3214,7 +3217,7 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
     // filtered by the exact same Cost Centre/Source/Sales Head/etc. criteria as the main
     // table — not just a static snapshot computed once at upload time.
     const fullRow = {
-      crm, date, leadName, project,
+      crm, date, leadId, leadName, project,
       salesHead: salesHead || '(unassigned)', salesHeadIsAssumed: usedLsqCostCentreForSalesHead,
       costCentre: costCentre || '(unassigned)',
       areaCostCentre, areaRegion,
@@ -3407,7 +3410,8 @@ M2.renderDispositionCheck = function(leads){
   M2._bindDispositionModeBar();
 
   const cols = [
-    {key:'crm', label:'CRM'}, {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
+    {key:'crm', label:'CRM'}, {key:'leadId', label:'Enquiry No.'}, {key:'leadName', label:'Customer'},
+    {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
     {key:'costCentre', label:'Team Member'}, {key:'originalStatus', label:'Lead Status'}, {key:'remarks', label:'Reason (e.g. Dump Reason)'}, {key:'salesRemark', label:'Last Remark (Sales)'},
     {key:'flagReason', label:'Why flagged'}
   ];
@@ -3484,8 +3488,8 @@ M2._renderDispositionGrouped = function(rows){
           <span>${Utils.escapeHtml(head)}</span><span>Total: ${leads.length}</span>
         </div>
         <table class="attach-table" style="margin:0;">
-          <tr><th>Sales Person</th><th>Project</th><th>Source</th><th>Lead Status</th><th>Reason</th><th>Last Remark (Sales)</th></tr>
-          ${sortedLeads.map(l=>`<tr><td>${Utils.escapeHtml(l.costCentre||'')}</td><td>${Utils.escapeHtml(l.project||'')}</td><td>${Utils.escapeHtml(l.source||'')}</td><td>${Utils.escapeHtml(l.originalStatus||'')}</td><td>${Utils.escapeHtml(l.remarks||'')}</td><td>${Utils.escapeHtml(l.salesRemark||'')}</td></tr>`).join('')}
+          <tr><th>Enquiry No.</th><th>Customer</th><th>Sales Person</th><th>Project</th><th>Source</th><th>Lead Status</th><th>Reason</th><th>Last Remark (Sales)</th><th>Why flagged</th></tr>
+          ${sortedLeads.map(l=>`<tr><td>${Utils.escapeHtml(l.leadId||'')}</td><td>${Utils.escapeHtml(l.leadName||'')}</td><td>${Utils.escapeHtml(l.costCentre||'')}</td><td>${Utils.escapeHtml(l.project||'')}</td><td>${Utils.escapeHtml(l.source||'')}</td><td>${Utils.escapeHtml(l.originalStatus||'')}</td><td>${Utils.escapeHtml(l.remarks||'')}</td><td>${Utils.escapeHtml(l.salesRemark||'')}</td><td>${Utils.escapeHtml(l.flagReason||'')}</td></tr>`).join('')}
         </table>
       </div>`;
     }).join('');
@@ -3505,18 +3509,18 @@ M2.downloadDispositionGrouped = function(rows){
   });
   const heads = Object.entries(byHead).sort((a,b)=>b[1].length-a[1].length);
 
-  const aoa = [['Sales Head', 'Total', '', '', '', '']];
+  const aoa = [['Sales Head', 'Total', '', '', '', '', '', '', '']];
   heads.forEach(([head, leads])=>{
-    aoa.push([head.toUpperCase(), leads.length, '', '', '', '']);
-    aoa.push(['Sales Person', 'Project', 'Source', 'Lead Status', 'Reason', 'Last Remark (Sales)']);
+    aoa.push([head.toUpperCase(), leads.length, '', '', '', '', '', '', '']);
+    aoa.push(['Enquiry No.', 'Customer', 'Sales Person', 'Project', 'Source', 'Lead Status', 'Reason', 'Last Remark (Sales)', 'Why flagged']);
     leads.slice().sort((a,b)=>(a.costCentre||'').localeCompare(b.costCentre||'')).forEach(l=>{
-      aoa.push([l.costCentre||'', l.project||'', l.source||'', l.originalStatus||'', l.remarks||'', l.salesRemark||'']);
+      aoa.push([l.leadId||'', l.leadName||'', l.costCentre||'', l.project||'', l.source||'', l.originalStatus||'', l.remarks||'', l.salesRemark||'', l.flagReason||'']);
     });
-    aoa.push(['', '', '', '', '', '']); // blank spacer row between Sales Heads
+    aoa.push(['', '', '', '', '', '', '', '', '']); // blank spacer row between Sales Heads
   });
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:22},{wch:22},{wch:12},{wch:22},{wch:26},{wch:50}];
+  ws['!cols'] = [{wch:14},{wch:24},{wch:22},{wch:26},{wch:16},{wch:22},{wch:22},{wch:50},{wch:40}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Wrong Disposition');
   XLSX.writeFile(wb, 'wrong_disposition_by_sales_head.xlsx');
@@ -3555,8 +3559,8 @@ M2.downloadDispositionByCostCentre = function(flaggedLeads){
       ...memberRows.map(([m,c])=>[m,c]),
       [],
       ['Detail — Every Flagged Lead'],
-      ['CRM','Project','Source','Team Member','Lead Status','Remark','Last Remark (Sales)'],
-      ...leads.map(l=>[l.crm||'', l.project||'', l.source||'', l.costCentre||'', l.originalStatus||'', l.remarks||'', l.salesRemark||'']),
+      ['CRM','Enquiry No.','Customer','Project','Source','Team Member','Lead Status','Remark','Last Remark (Sales)','Why flagged'],
+      ...leads.map(l=>[l.crm||'', l.leadId||'', l.leadName||'', l.project||'', l.source||'', l.costCentre||'', l.originalStatus||'', l.remarks||'', l.salesRemark||'', l.flagReason||'']),
     ];
     return {name: salesHead, aoa};
   });
