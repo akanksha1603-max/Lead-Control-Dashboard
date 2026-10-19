@@ -450,6 +450,10 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           </div>
         </div>
         <div class="card">
+          <h2 id="m2-region-title">Region breakdown</h2>
+          <div id="m2-region-summary"></div>
+        </div>
+        <div class="card">
           <h2 id="m2-reason-title">Reason breakdown</h2>
           <div id="m2-reason-summary"></div>
         </div>
@@ -3220,7 +3224,7 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
       crm, date, leadId, leadName, project,
       salesHead: salesHead || '(unassigned)', salesHeadIsAssumed: usedLsqCostCentreForSalesHead,
       costCentre: costCentre || '(unassigned)',
-      areaCostCentre, areaRegion,
+      areaCostCentre, areaRegion: areaRegion || '(Region unknown)',
       source: resolved.canonical || sourceRaw, sourceCategory: resolved.category, subSource: sourceRaw || '',
       channel: Utils.classifyChannel(resolved.category), agency,
       originalStatus, statusClass,
@@ -3683,6 +3687,7 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
     {key:'date', label:'Date', type:'daterange'},
     {key:'crm', label:'CRM'},
     {key:'areaCostCentre', label:'Cost Centre Person (Area)'},
+    {key:'areaRegion', label:'Region'},
     {key:'project', label:'Project'},
     {key:'channel', label:'Channel'},
     {key:'source', label:'Source/Sub-source'},
@@ -3755,20 +3760,20 @@ M2.downloadTitledFlatReport = function(){
 
   const aoa = [
     [titleText],
-    ['Cost Centre (Area)', 'Team Member', 'Source', 'Sub Source', 'Channel'].concat(M2.pivotStatusColumns().map(c=>c.label)),
+    ['Cost Centre (Area)', 'Region', 'Team Member', 'Source', 'Sub Source', 'Channel'].concat(M2.pivotStatusColumns().map(c=>c.label)),
   ];
   const statusCols = M2.pivotStatusColumns();
   const totals = statusCols.map(()=>0);
   rows.forEach(function(r){
     const vals = statusCols.map(c=>r[c.key]||0);
     vals.forEach((v,i)=> totals[i] += v);
-    aoa.push([r.areaCostCentre||'', r.costCentre||'', r.source||'', r.subSource||'', r.channel||''].concat(vals));
+    aoa.push([r.areaCostCentre||'', r.areaRegion||'', r.costCentre||'', r.source||'', r.subSource||'', r.channel||''].concat(vals));
   });
-  aoa.push(['TOTAL', '', '', '', ''].concat(totals));
+  aoa.push(['TOTAL', '', '', '', '', ''].concat(totals));
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:22},{wch:20},{wch:12},{wch:16},{wch:10}].concat(statusCols.map(c=>({wch:Math.max(8, c.label.length+2)})));
-  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:4+statusCols.length}}];
+  ws['!cols'] = [{wch:22},{wch:14},{wch:20},{wch:12},{wch:16},{wch:10}].concat(statusCols.map(c=>({wch:Math.max(8, c.label.length+2)})));
+  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:5+statusCols.length}}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Report');
   XLSX.writeFile(wb, 'new_not_connected_report_' + fetchedDateLabel + '.xlsx');
@@ -3785,9 +3790,9 @@ M2.renderSummaries = function(leads){
   // two rows per combination) — easier to scan both numbers for the same person/source at once. ----
   const pivotMap = {};
   leads.forEach(l=>{
-    const key = [l.areaCostCentre, l.costCentre, l.source, l.subSource].join('||');
+    const key = [l.areaCostCentre, l.areaRegion, l.costCentre, l.source, l.subSource].join('||');
     if(!pivotMap[key]) pivotMap[key] = {
-      areaCostCentre: l.areaCostCentre, costCentre: l.costCentre, source: l.source, subSource: l.subSource || '(not mapped)', channel: l.channel,
+      areaCostCentre: l.areaCostCentre, areaRegion: l.areaRegion, costCentre: l.costCentre, source: l.source, subSource: l.subSource || '(not mapped)', channel: l.channel,
       newCount:0, notConnectedCount:0, reqMismatchCount:0, dumpCount:0, totalCount:0
     };
     const pr = pivotMap[key];
@@ -3804,6 +3809,7 @@ M2.renderSummaries = function(leads){
   const statusCols = M2.pivotStatusColumns();
   const pivotColumns = [
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
+    {key:'areaRegion', label:'Region'},
     {key:'costCentre', label:'Team Member'},
     {key:'source', label:'Source'},
     {key:'subSource', label:'Sub Source'},
@@ -3818,6 +3824,7 @@ M2.renderSummaries = function(leads){
   M2._pivotColsKey = colsKey;
   const pivotFilterDefs = [
     {key:'areaCostCentre', label:'Cost Centre (Area)'},
+    {key:'areaRegion', label:'Region'},
     {key:'costCentre', label:'Team Member'},
     {key:'source', label:'Source'},
     {key:'subSource', label:'Sub Source'},
@@ -3835,8 +3842,8 @@ M2.renderSummaries = function(leads){
         // The pivot's OWN filter changed (not the detail table) — reconstruct which underlying
         // leads that corresponds to, and refresh just the KPI row/breakdowns to match, WITHOUT
         // rebuilding this table itself (that would wipe out the filter the person just set).
-        const allowedKeys = new Set(filteredPivotRows.map(r=>[r.areaCostCentre, r.costCentre, r.source, r.subSource].join('||')));
-        const matchingLeads = M2._allFilteredLeads.filter(l=> allowedKeys.has([l.areaCostCentre, l.costCentre, l.source, l.subSource||'(not mapped)'].join('||')));
+        const allowedKeys = new Set(filteredPivotRows.map(r=>[r.areaCostCentre, r.areaRegion, r.costCentre, r.source, r.subSource].join('||')));
+        const matchingLeads = M2._allFilteredLeads.filter(l=> allowedKeys.has([l.areaCostCentre, l.areaRegion, l.costCentre, l.source, l.subSource||'(not mapped)'].join('||')));
         M2.computeAndRenderKpisAndBreakdowns(matchingLeads);
         M2.renderFullStatusBreakdown(M2.getFilteredAllRows());
       }
@@ -3895,7 +3902,43 @@ M2.computeAndRenderKpisAndBreakdowns = function(leads){
   M2.renderReasonAndAgingBreakdowns(leads);
 };
 
+M2.renderRegionBreakdown = function(leads){
+  const el = document.getElementById('m2-region-summary');
+  if(!el) return;
+  const selStatuses = M2.getSelectedStatuses();
+  const statusText = selStatuses.length === M2.STATUS_ORDER.length ? 'all statuses' : selStatuses.join(', ');
+  const tt = document.getElementById('m2-region-title');
+  if(tt) tt.innerHTML = `Region breakdown <small>${Utils.escapeHtml(statusText)}</small>`;
+  const statusCols = M2.pivotStatusColumns();
+  const byRegion = {};
+  leads.forEach(l=>{
+    const region = l.areaRegion || '(Region unknown)';
+    if(!byRegion[region]) byRegion[region] = {region, people:new Set(), newCount:0, notConnectedCount:0, reqMismatchCount:0, dumpCount:0, totalCount:0};
+    const r = byRegion[region];
+    if(l.areaCostCentre) r.people.add(l.areaCostCentre);
+    if(l.statusClass==='new') r.newCount++;
+    else if(l.statusClass==='not_connected') r.notConnectedCount++;
+    else if(l.statusClass==='req_mismatch') r.reqMismatchCount++;
+    else if(l.statusClass==='dump') r.dumpCount++;
+    r.totalCount++;
+  });
+  const rows = Object.values(byRegion).sort((a,b)=>b.totalCount-a.totalCount);
+  if(!rows.length){ el.innerHTML = `<div class="empty-state">No leads found for the selected status.</div>`; return; }
+  const totals = statusCols.map(c=>rows.reduce((s,r)=>s+(r[c.key]||0),0));
+  el.innerHTML = `<table class="attach-table">
+      <tr><th>Region</th><th>Cost Centre (Area)</th>${statusCols.map(c=>`<th>${Utils.escapeHtml(c.label)}</th>`).join('')}</tr>
+      ${rows.map((r,i)=>`<tr class="clickable-row" data-rg-idx="${i}">
+        <td>${Utils.escapeHtml(r.region)}</td><td>${Utils.escapeHtml(Array.from(r.people).join(', '))}</td>${statusCols.map(c=>`<td>${r[c.key]||0}</td>`).join('')}
+      </tr>`).join('')}
+      <tr><td><strong>Total</strong></td><td></td>${totals.map(t=>`<td><strong>${t}</strong></td>`).join('')}</tr>
+    </table><div class="mini-note">Region = the city of the Cost Centre's branch (4QT "Handler Branch", e.g. "Santanu Ghosh-Bangalore" → Bangalore) or LeadSquared's Region. Click a region to filter the tables below to it.</div>`;
+  el.querySelectorAll('tr[data-rg-idx]').forEach(tr=>{
+    tr.addEventListener('click', ()=> M2.table.setFilters({areaRegion: rows[+tr.dataset.rgIdx].region}, true));
+  });
+};
+
 M2.renderReasonAndAgingBreakdowns = function(leads){
+  M2.renderRegionBreakdown(leads);
   const NO_REASON_TEXT = 'Not specified — ask CRM/sales for a reason code';
   // Follows the Lead Status selector (all selected statuses), not Not Connected only.
   const ncLeads = leads;
