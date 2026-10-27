@@ -296,7 +296,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       <button class="rail-item active" data-view="v1"><span class="num">01</span><span><span class="lbl">CRM Mapping Mismatch</span><span class="desc">Project / source / ownership audit</span></span></button>
       <button class="rail-item" data-view="v2"><span class="num">02</span><span><span class="lbl">New &amp; Not Connected</span><span class="desc">Sales follow-up control</span></span></button>
       <button class="rail-item" data-view="v3"><span class="num">03</span><span><span class="lbl">Agency → CRM Gap</span><span class="desc">Lead reconciliation</span></span></button>
-      <button class="rail-item" data-view="v4"><span class="num">04</span><span><span class="lbl">Mapping Mail Generator</span><span class="desc">4QT &amp; LeadSquared mail</span></span></button>
+      <button class="rail-item" data-view="v4"><span class="num">04</span><span><span class="lbl">Mapping Mail Generator</span><span class="desc">4QT mapping mail</span></span></button>
       <button class="rail-item" data-view="v5"><span class="num">05</span><span><span class="lbl">Location Master</span><span class="desc">Region → Sales Head / Cost Centre</span></span></button>
       <button class="rail-item" data-view="v6"><span class="num">06</span><span><span class="lbl">Settings</span><span class="desc">Customize masters &amp; thresholds</span></span></button>
     </nav>
@@ -372,24 +372,20 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       </div>
 
       <div class="card">
-        <h2>1 · Upload CRM master(s)</h2>
-        <div class="help-note">Only turn on the option below if a single file mixes both CRMs' rows together.</div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:12px;">
-          <input type="checkbox" id="m2-merged-toggle">
-          One of these files actually contains rows from both CRMs — identify each row's CRM by project location instead
-        </label>
+        <h2>1 · Upload 4QT CRM master</h2>
+        <div class="help-note">All regions are now in one CRM (4QT) — upload the single 4QT export. Nothing is excluded by city any more.</div>
         <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:12px;">
           <input type="checkbox" id="m2-paid-only-toggle" checked>
           Only include paid performance-marketing leads (Meta, Google, Demand Gen, Video Ads, PPC, Platter, Property Portals, IVR, WhatsApp) — this dashboard's purpose is monitoring paid lead flow, so anything not in this list (organic, referrals, walk-ins, etc.) is excluded by default. Uncheck to see everything.
         </label>
         <div class="upload-grid">
           <div class="upload-box" id="m2-box-4qt">
-            <div class="u-title">4QT CRM Master</div>
-            <div class="u-hint">Noida, Gurugram, Delhi, Pune, Bangalore</div>
+            <div class="u-title">4QT CRM Master (all regions)</div>
+            <div class="u-hint">Noida, Greater Noida, Gurugram, Delhi, Ghaziabad, Pune, Bangalore, Mumbai, Hyderabad, Chennai, Kolkata, Kochi, NRI, Dubai</div>
             <input type="file" id="m2-file-4qt" accept=".xlsx,.xls,.csv,.pdf">
             <div class="u-status empty" id="m2-status-4qt">No file uploaded</div>
           </div>
-          <div class="upload-box" id="m2-box-lsq">
+          <div class="upload-box" id="m2-box-lsq" style="display:none;">
             <div class="u-title">LeadSquared CRM Master</div>
             <div class="u-hint">Mumbai, Hyderabad, Chennai, NRI, Kolkata</div>
             <input type="file" id="m2-file-lsq" accept=".xlsx,.xls,.csv,.pdf">
@@ -398,13 +394,13 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         </div>
         <div class="btn-row" style="margin-top:14px;">
           <button class="btn btn-primary" id="m2-generate" disabled>Generate report</button>
-          <span class="mini-note">At least one CRM master is required.</span>
+          <span class="mini-note">The 4QT CRM master is required.</span>
         </div>
       </div>
 
       <div id="m2-report" style="display:none;">
         <div class="card" id="m2-disposition-card" style="display:none;">
-          <h2>Lead Disposition Audit <small>Pick a Lead Status, then choose to see only wrongly-dispositioned leads (remark shows contact was made — for Requirement Mismatch, the Sales remark names the lead's own project or says details were shared/sent) or every lead of that status with its reason</small></h2>
+          <h2>Lead Disposition Audit <small>Pick a Lead Status, then choose to see only wrongly-dispositioned leads (remark shows contact was made — for Requirement Mismatch, the Sales remark names the lead's own project, says details were shared/sent, or shows a visit / meeting / call back planned) or every lead of that status with its reason</small></h2>
           <div class="m2-status-bar" id="m2disp-mode-bar" role="radiogroup" aria-label="Which leads to show">
             <span class="sb-label">Show:</span>
             <span class="sb-chip on" data-mode="flagged" role="radio" aria-checked="true" tabindex="0">Only wrong disposition (remark shows contact)</span>
@@ -502,12 +498,12 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
             <div class="u-status empty" id="m3-status-agency">No file uploaded</div>
           </div>
           <div class="upload-box" id="m3-box-crm-4qt">
-            <div class="u-title">4QT CRM Data</div>
-            <div class="u-hint">One row per lead, from 4QT — one file or several</div>
+            <div class="u-title">4QT CRM Data (all regions)</div>
+            <div class="u-hint">One row per lead, from 4QT — one file or several. Noida, Greater Noida, Gurugram, Delhi, Ghaziabad, Pune, Bangalore, Mumbai, Hyderabad, Chennai, Kolkata, Kochi, NRI, Dubai</div>
             <input type="file" id="m3-file-crm-4qt" accept=".xlsx,.xls,.csv,.pdf" multiple>
             <div class="u-status empty" id="m3-status-crm-4qt">No file uploaded</div>
           </div>
-          <div class="upload-box" id="m3-box-crm-lsq">
+          <div class="upload-box" id="m3-box-crm-lsq" style="display:none;">
             <div class="u-title">LeadSquared CRM Data</div>
             <div class="u-hint">One row per lead, from LeadSquared — one file or several</div>
             <input type="file" id="m3-file-crm-lsq" accept=".xlsx,.xls,.csv,.pdf" multiple>
@@ -516,7 +512,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         </div>
         <div class="btn-row" style="margin-top:14px;">
           <button class="btn btn-primary" id="m3-generate" disabled>Generate report</button>
-          <span class="mini-note">At least one CRM file (4QT or LeadSquared, or both) is required. Agency file is optional — without it, you'll get a CRM-only Lead Count view with no gap comparison.</span>
+          <span class="mini-note">The 4QT CRM file is required. Agency file is optional — without it, you'll get a CRM-only Lead Count view with no gap comparison.</span>
         </div>
       </div>
 
@@ -590,7 +586,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           <div class="mail-grid">
             <div class="field"><label>Template Name</label><input id="m4-nt-name" placeholder="e.g. 4QT Urgent Escalation"></div>
             <div class="field"><label>CRM</label>
-              <select id="m4-nt-kind"><option value="4qt">4QT</option><option value="lsq">LeadSquared</option></select>
+              <select id="m4-nt-kind"><option value="4qt">4QT</option></select>
             </div>
           </div>
           <div class="field"><label>Subject</label><input id="m4-nt-subject" placeholder="Project Mapping Update - {{project}} - Source:{{source}}"></div>
@@ -1464,8 +1460,11 @@ Utils.detectColumns = function(headers, fieldList, rows){
    LeadSquared rows are merged into one uploaded file (no reliable CRM column),
    this infers which system a lead belongs to from its project/location text. */
 Utils.CRM_STRUCTURE = {
-  '4QT': ['noida','greater noida','gurugram','gurgaon','delhi','pune','bangalore','bengaluru','ghaziabad'],
-  'LeadSquared': ['mumbai','hyderabad','chennai','nri','kolkata','dubai'],
+  // All regions moved to a single CRM (4QT). LeadSquared is kept only as an empty
+  // entry so older code paths that look it up don't break.
+  '4QT': ['noida','greater noida','gurugram','gurgaon','delhi','pune','bangalore','bengaluru','ghaziabad',
+          'mumbai','hyderabad','chennai','nri','kolkata','dubai','kochi','goa'],
+  'LeadSquared': [],
 };
 Utils.inferCrm = function(text){
   const t = Utils.normLoose(text);
@@ -1476,7 +1475,7 @@ Utils.inferCrm = function(text){
   // still LeadSquared's NRI desk, not 4QT's Bangalore, even though "Bangalore"
   // also appears in the same name). Checking city names in the normal order
   // first would incorrectly match "Bangalore" before ever considering "NRI".
-  if(/\bnri\b/.test(t)) return 'LeadSquared';
+  if(/\bnri\b/.test(t)) return '4QT';
   for(const sys of Object.keys(Utils.CRM_STRUCTURE)){
     if(Utils.CRM_STRUCTURE[sys].some(city=>t.includes(city))) return sys;
   }
@@ -3098,7 +3097,9 @@ M2.generate = async function(){
    last part of the project name) don't belong in the 4QT report even though
    they showed up in the 4QT export — 4QT only owns Noida/Gurugram/Delhi/Pune/
    Bangalore. Excluded, not relabeled, per the person's instruction. */
-Utils.LSQ_CITY_SUFFIX_RE = new RegExp('\\b(' + Utils.CRM_STRUCTURE.LeadSquared.join('|') + ')\\s*$', 'i');
+// Single CRM now: no project is "LeadSquared territory", so this never matches —
+// nothing is excluded from 4QT by city, and agency rows are never split by territory.
+Utils.LSQ_CITY_SUFFIX_RE = /(?!)/;
 
 M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
   const mergedMode = !!(document.getElementById('m2-merged-toggle') && document.getElementById('m2-merged-toggle').checked);
@@ -3314,6 +3315,11 @@ const CONTACT_EVIDENCE_RE = /\b(shared|sent|discussed|explained|informed|spoke|s
 /* Requirement Mismatch is also a wrong disposition when the Sales remark says
    project details were shared / sent (e.g. "Details shared", "sent him the details"). */
 const DETAILS_SHARED_RE = /\bdetails?\s+(have\s+been\s+|has\s+been\s+|been\s+|were\s+|was\s+|are\s+|is\s+)?(shared|sent|send|share)\b|\b(shared|sent|send|share|sending|sharing)\s+(him\s+|her\s+|them\s+|the\s+|all\s+|project\s+|property\s+|of\s+|on\s+whatsapp\s+)*details?\b/i;
+/* ...and when the Sales remark shows the customer is still engaged: a visit is
+   planned, a meeting / call back is set, or they will discuss and revert
+   (e.g. "Sunday visit plan", "will discuss with his family than meet next weekend"). */
+const FOLLOWUP_INTENT_RE = /\b(site\s*)?visit(s|ing)?\b|\bsv\b|\bmeet(ing)?\b|\bcall\s*back\b|\bcallback\b|\bdiscuss(ing)?\s+with\b|\bwill\s+(discuss|think|plan|come|confirm|update|visit|meet)\b|\bcoming\s+(this|next|on|tomorrow|today|sunday|saturday|weekend)\b|\bplan(ning|ing)?\s+(for|to)\s+(a\s+)?(site\s+)?visit\b/i;
+const FOLLOWUP_NEG_RE = /\b(not|no|never|won'?t|wont|don'?t|dont|didn'?t|didnt|cancel(l?ed)?|denied|refused)\s+(\w+\s+){0,3}(visit|meet|coming|come|plan)\b|\bnot\s+interest|\bvisit\s+(cancel|denied)|\bvisited\b|\bvisit\s+done\b/i;
 M2.isReqMismatchStatus = function(s){
   return /requirement\s*mis\s*match|mis\s*match|mis\s*requirement|req(uirement)?\s*mismatch/.test(Utils.normLoose(s));
 };
@@ -3384,11 +3390,13 @@ M2.renderDispositionCheck = function(leads){
     if(M2.isReqMismatchStatus(l.originalStatus)){
       const hit = M2.remarkNamesProject(l.project, l.salesRemark);
       const shared = DETAILS_SHARED_RE.test(l.salesRemark || '');
+      const followUp = FOLLOWUP_INTENT_RE.test(l.salesRemark || '') && !FOLLOWUP_NEG_RE.test(l.salesRemark || '');
       const why = [];
       if(hit) why.push('Remark names the lead\'s own project ("' + hit + '")');
       if(shared) why.push('Remark says details were shared/sent');
+      if(followUp) why.push('Remark shows visit / meeting / call back planned');
       l.flagReason = why.join('; ');
-      return !!(hit || shared);
+      return !!(hit || shared || followUp);
     }
     const text = [l.remarks, l.salesRemark].join(' ');
     if(NOT_CONNECTED_NEGATION_RE.test(text)) return false; // genuinely not connected, no matter what else the text says
@@ -3405,8 +3413,8 @@ M2.renderDispositionCheck = function(leads){
     const label = M2._dispMode === 'all'
       ? `All ${Utils.escapeHtml(statusText)} leads`
       : (/^(requirement mismatch[^,]*)(, requirement mismatch[^,]*)*$/i.test(statusText)
-          ? `${Utils.escapeHtml(statusText)} — but the Sales remark names the lead's own project or says details were shared/sent`
-          : `${Utils.escapeHtml(statusText)} — flagged as wrong disposition (Requirement Mismatch: remark names the lead's own project or says details were shared/sent; other statuses: remark shows contact was made)`);
+          ? `${Utils.escapeHtml(statusText)} — but the Sales remark names the lead's own project, says details were shared/sent, or shows a visit / meeting / call back planned`
+          : `${Utils.escapeHtml(statusText)} — flagged as wrong disposition (Requirement Mismatch: remark names the lead's own project, says details were shared/sent, or shows a visit / meeting / call back planned; other statuses: remark shows contact was made)`);
     document.getElementById('m2-disposition-headline').innerHTML = `
       <div class="kpi ${M2._dispMode === 'all' ? '' : 'tone-red'}"><div class="k-label">${label}</div><div class="k-value">${rows.length}</div></div>
     `;
@@ -3414,7 +3422,7 @@ M2.renderDispositionCheck = function(leads){
   M2._bindDispositionModeBar();
 
   const cols = [
-    {key:'crm', label:'CRM'}, {key:'leadId', label:'Enquiry No.'}, {key:'leadName', label:'Customer'},
+    {key:'leadId', label:'Enquiry No.'}, {key:'leadName', label:'Customer'},
     {key:'project', label:'Project'}, {key:'source', label:'Source'}, {key:'salesHead', label:'Sales Head'},
     {key:'costCentre', label:'Team Member'}, {key:'originalStatus', label:'Lead Status'}, {key:'remarks', label:'Reason (e.g. Dump Reason)'}, {key:'salesRemark', label:'Last Remark (Sales)'},
     {key:'flagReason', label:'Why flagged'}
@@ -3563,8 +3571,8 @@ M2.downloadDispositionByCostCentre = function(flaggedLeads){
       ...memberRows.map(([m,c])=>[m,c]),
       [],
       ['Detail — Every Flagged Lead'],
-      ['CRM','Enquiry No.','Customer','Project','Source','Team Member','Lead Status','Remark','Last Remark (Sales)','Why flagged'],
-      ...leads.map(l=>[l.crm||'', l.leadId||'', l.leadName||'', l.project||'', l.source||'', l.costCentre||'', l.originalStatus||'', l.remarks||'', l.salesRemark||'', l.flagReason||'']),
+      ['Enquiry No.','Customer','Project','Source','Team Member','Lead Status','Remark','Last Remark (Sales)','Why flagged'],
+      ...leads.map(l=>[l.leadId||'', l.leadName||'', l.project||'', l.source||'', l.costCentre||'', l.originalStatus||'', l.remarks||'', l.salesRemark||'', l.flagReason||'']),
     ];
     return {name: salesHead, aoa};
   });
@@ -3662,7 +3670,6 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
   });
 
   const columns = [
-    {key:'crm', label:'CRM'},
     {key:'areaCostCentre', label:'Cost Centre Person (Area)'},
     {key:'areaRegion', label:'Region'},
     {key:'source', label:'Source/Sub-source'},
@@ -3685,7 +3692,6 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
   ];
   const filterDefs = [
     {key:'date', label:'Date', type:'daterange'},
-    {key:'crm', label:'CRM'},
     {key:'areaCostCentre', label:'Cost Centre Person (Area)'},
     {key:'areaRegion', label:'Region'},
     {key:'project', label:'Project'},
@@ -5281,8 +5287,11 @@ M4.cleanTeam = function(){ return M4.team.filter(m=> (m.name||'').trim() || (m.e
 /* All templates, any CRM, one flat list — selecting one determines both the
    text AND whether the attachment section shows (based on that template's kind). */
 M4.allTemplates = function(){
+  // Single CRM (4QT) for all regions now — LeadSquared templates are no longer offered.
   const all = Utils.Settings.mailTemplates;
-  return (all && all.length) ? all : Utils.DEFAULT_MAIL_TEMPLATES;
+  const list = (all && all.length) ? all : Utils.DEFAULT_MAIL_TEMPLATES;
+  const qt = list.filter(t=>t.kind!=='lsq');
+  return qt.length ? qt : Utils.DEFAULT_MAIL_TEMPLATES.filter(t=>t.kind!=='lsq');
 };
 M4.currentTemplate = function(){
   const list = M4.allTemplates();
@@ -5633,7 +5642,6 @@ Settings.renderMailTemplateTable = function(){
       <td>
         <select data-mt="${i}" data-f="kind" style="width:110px;">
           <option value="4qt" ${t.kind!=='lsq'?'selected':''}>4QT</option>
-          <option value="lsq" ${t.kind==='lsq'?'selected':''}>LeadSquared</option>
         </select>
       </td>
       <td><input data-mt="${i}" data-f="subject" value="${Utils.escapeHtml(t.subject||'')}" style="width:260px;"></td>
