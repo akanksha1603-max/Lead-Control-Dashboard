@@ -512,6 +512,19 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       </div>
 
       <div id="m2-report" style="display:none;">
+        <div class="card" id="m2mail-card">
+          <details>
+            <summary style="cursor:pointer;font-weight:600;">📧 Email this report to the Sales Heads <small style="font-weight:400;color:var(--text-muted)">— one mail per Sales Head with their team's New &amp; Not Connected leads, Excel attached, your people in CC</small></summary>
+            <div class="help-note" style="margin-top:10px;"><b>Send</b> mails it straight from your Gmail through the Apps Script link (the same one used for the live master sheet — it needs the updated script). <b>Gmail</b> opens a ready draft instead and downloads the Excel for you to attach. Email addresses and CC are remembered.</div>
+            <div class="mail-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0;">
+              <div class="f-field"><label>Apps Script sender link (with ?token=…)</label><input id="m2mail-url" placeholder="https://script.google.com/macros/s/…/exec?token=…"></div>
+              <div class="f-field"><label>Always CC (comma-separated)</label><input id="m2mail-cc" placeholder="vishal@…, akshay@…"></div>
+            </div>
+            <div id="m2mail-body" style="overflow-x:auto;"></div>
+            <div class="btn-row" style="margin-top:10px;"><button class="btn btn-primary" id="m2mail-sendall" type="button">Send to all Sales Heads with an email</button></div>
+            <div id="m2mail-preview" style="margin-top:12px;"></div>
+          </details>
+        </div>
         <div class="card" id="m2-disposition-card" style="display:none;">
           <h2>Lead Disposition Audit <small>Pick a Lead Status, then choose to see only wrongly-dispositioned leads (remark shows contact was made — for Requirement Mismatch, the Sales remark names the lead's own project, says details were shared/sent, or shows a visit / meeting / call back planned) or every lead of that status with its reason</small></h2>
           <div class="m2-status-bar" id="m2disp-mode-bar" role="radiogroup" aria-label="Which leads to show">
@@ -4024,6 +4037,8 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
   M2._nonPaidExcluded = nonPaidExcluded || 0;
   M2._costCentreExcluded = costCentreExcluded || 0;
   M2.renderDispositionCheck(leads);
+  M2._reportLeads = leads;
+  try{ M2M.render(); }catch(e){ console.warn('report mail panel', e); }
 
   // "New" and "Not Connected" as two separate columns instead of one combined
   // Status column — each lead only ever fills in ONE of these (a lead is either
@@ -6323,5 +6338,168 @@ document.addEventListener('DOMContentLoaded', function(){
   document.addEventListener('click', e=>{ if(rail.classList.contains('open') && !rail.contains(e.target)) rail.classList.remove('open'); });
 });
 </script>
+<script>
+/* ============================================================
+   MODULE 2 — EMAIL THE NEW & NOT CONNECTED REPORT TO SALES HEADS
+   One mail per Sales Head (Cost Centre person): summary in the mail body,
+   that head's full lead list attached as Excel, fixed people in CC.
+   Sending goes through the same Apps Script Web App as the live master
+   sheet (doPost → GmailApp.sendEmail), so it leaves from your own Gmail.
+   "Gmail" opens a pre-filled draft instead (attach the downloaded Excel).
+   ============================================================ */
+var M2M = {};
+M2M.conf = function(){
+  const S = Utils.Settings;
+  if(!S.reportMail) S.reportMail = {senderUrl:'', defaultCc:'', heads:{}};
+  if(!S.reportMail.senderUrl && S.m1pMasterLive && S.m1pMasterLive.url) S.reportMail.senderUrl = S.m1pMasterLive.url;
+  return S.reportMail;
+};
+M2M.leads = function(){
+  return (M2._reportLeads||[]).filter(l=> l.statusClass==='new' || l.statusClass==='not_connected');
+};
+M2M.groups = function(){
+  const g = {};
+  M2M.leads().forEach(l=>{
+    const head = l.areaCostCentre || l.salesHead || '(unassigned)';
+    const x = g[head] || (g[head] = {head, leads:[], regions:new Set(), newC:0, ncC:0, ncOld:0});
+    x.leads.push(l); if(l.areaRegion) x.regions.add(l.areaRegion);
+    if(l.statusClass==='new') x.newC++; else { x.ncC++; if((+l.daysInStatus||0) >= 8) x.ncOld++; }
+  });
+  return Object.values(g).sort((a,b)=> (b.newC+b.ncC)-(a.newC+a.ncC));
+};
+M2M.teamRows = function(grp){
+  const t = {};
+  grp.leads.forEach(l=>{
+    const k = (l.costCentre||'(unassigned)') + '||' + (l.areaRegion||'');
+    const r = t[k] || (t[k] = {member:l.costCentre||'(unassigned)', region:l.areaRegion||'', newC:0, ncC:0, ncOld:0});
+    if(l.statusClass==='new') r.newC++; else { r.ncC++; if((+l.daysInStatus||0) >= 8) r.ncOld++; }
+  });
+  return Object.values(t).sort((a,b)=>(b.newC+b.ncC)-(a.newC+a.ncC));
+};
+M2M.dateRange = function(leads){
+  const ds = leads.map(l=>l.date).filter(d=>d instanceof Date && !isNaN(d)).sort((a,b)=>a-b);
+  const f = d=> d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  return ds.length ? (f(ds[0]) + ' – ' + f(ds[ds.length-1])) : '';
+};
+M2M.firstName = function(head){ return String(head||'').trim().split(/\s+/)[0] || 'Sir'; };
+M2M.build = function(grp){
+  const today = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  const rows = M2M.teamRows(grp), range = M2M.dateRange(grp.leads);
+  const subject = `New & Not Connected Leads – ${grp.head} – ${today}`;
+  const td = 'style="border:1px solid #d0d5dd;padding:6px 10px;font-size:13px;"', th = 'style="border:1px solid #d0d5dd;padding:6px 10px;font-size:13px;background:#1F4E78;color:#fff;text-align:left;"';
+  const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2328;">
+<p>Hi ${Utils.escapeHtml(M2M.firstName(grp.head))} Sir,</p>
+<p>Please find below the <b>New</b> and <b>Not Connected</b> paid-campaign leads for your team${range?` (leads dated ${Utils.escapeHtml(range)})`:''}, as of ${Utils.escapeHtml(today)}.</p>
+<p><b>New: ${grp.newC}</b> &nbsp;|&nbsp; <b>Not Connected: ${grp.ncC}</b> &nbsp;|&nbsp; <b style="color:#b42318;">Not Connected for 8+ days: ${grp.ncOld}</b></p>
+<table style="border-collapse:collapse;margin:8px 0 14px 0;">
+<tr><th ${th}>Team Member</th><th ${th}>Region</th><th ${th}>New</th><th ${th}>Not Connected</th><th ${th}>NC 8+ days</th><th ${th}>Total</th></tr>
+${rows.map(r=>`<tr><td ${td}>${Utils.escapeHtml(r.member)}</td><td ${td}>${Utils.escapeHtml(r.region)}</td><td ${td}>${r.newC}</td><td ${td}>${r.ncC}</td><td ${td}>${r.ncOld}</td><td ${td}><b>${r.newC+r.ncC}</b></td></tr>`).join('')}
+<tr><td ${td}><b>Total</b></td><td ${td}></td><td ${td}><b>${grp.newC}</b></td><td ${td}><b>${grp.ncC}</b></td><td ${td}><b>${grp.ncOld}</b></td><td ${td}><b>${grp.newC+grp.ncC}</b></td></tr>
+</table>
+<p>The full lead list (Enquiry No., customer, project, source, days since assigned and last remark) is attached. Kindly ensure these leads are called and updated in 4QT today.</p>
+<p>Thank you</p></div>`;
+  const text = `Hi ${M2M.firstName(grp.head)} Sir,\n\nNew & Not Connected paid-campaign leads for your team${range?` (leads dated ${range})`:''}, as of ${today}.\n\nNew: ${grp.newC} | Not Connected: ${grp.ncC} | Not Connected 8+ days: ${grp.ncOld}\n\n` +
+    rows.map(r=>`${r.member} (${r.region}) – New ${r.newC}, Not Connected ${r.ncC}, 8+ days ${r.ncOld}`).join('\n') +
+    `\n\nThe full lead list is attached. Kindly ensure these leads are called and updated in 4QT today.\n\nThank you`;
+  return {subject, html, text};
+};
+M2M.workbook = function(grp){
+  const rows = M2M.teamRows(grp);
+  const sum = [['New & Not Connected – ' + grp.head], [], ['Team Member','Region','New','Not Connected','NC 8+ days','Total']]
+    .concat(rows.map(r=>[r.member, r.region, r.newC, r.ncC, r.ncOld, r.newC+r.ncC]))
+    .concat([['Total','',grp.newC,grp.ncC,grp.ncOld,grp.newC+grp.ncC]]);
+  const fmt = d=> d instanceof Date && !isNaN(d) ? d.toLocaleDateString('en-GB') : (d||'');
+  const det = [['Enquiry No.','Customer','Lead Date','Project','Region','Team Member','Source','Sub Source','Status','Days Since Assigned','Reason','Last Remark (Sales)']]
+    .concat(grp.leads.slice().sort((a,b)=>(+b.daysInStatus||0)-(+a.daysInStatus||0)).map(l=>[l.leadId||'', l.leadName||'', fmt(l.date), l.project||'', l.areaRegion||'', l.costCentre||'', l.source||'', l.subSource||'', l.statusLabel||l.originalStatus||'', l.daysInStatus===''?'':l.daysInStatus, l.remarks||'', l.salesRemark||'']));
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet(sum); ws1['!cols'] = [{wch:26},{wch:14},{wch:8},{wch:14},{wch:12},{wch:8}];
+  const ws2 = XLSX.utils.aoa_to_sheet(det); ws2['!cols'] = [{wch:12},{wch:22},{wch:11},{wch:30},{wch:12},{wch:20},{wch:12},{wch:20},{wch:14},{wch:10},{wch:22},{wch:45}];
+  ws2['!autofilter'] = {ref: XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:det.length-1, c:11}})};
+  XLSX.utils.book_append_sheet(wb, ws1, 'Summary'); XLSX.utils.book_append_sheet(wb, ws2, 'Leads');
+  const fname = ('NNC_' + grp.head + '_' + new Date().toISOString().slice(0,10)).replace(/[^\w\-]+/g,'_') + '.xlsx';
+  return {wb, fname};
+};
+M2M.recipients = function(head){
+  const c = M2M.conf(); const h = c.heads[head] || {};
+  const clean = v=> String(v||'').split(/[;,\s]+/).map(x=>x.trim()).filter(x=>/@/.test(x));
+  return {to: clean(h.to), cc: Array.from(new Set(clean(c.defaultCc).concat(clean(h.cc))))};
+};
+M2M.send = async function(grp){
+  const c = M2M.conf(); const r = M2M.recipients(grp.head);
+  if(!r.to.length) throw new Error('Add the email address for ' + grp.head);
+  if(!c.senderUrl) throw new Error('Add the Apps Script sender link first (or use "Gmail")');
+  const m = M2M.build(grp), x = M2M.workbook(grp);
+  const payload = {action:'sendReport', to:r.to.join(','), cc:r.cc.join(','), subject:m.subject, htmlBody:m.html, textBody:m.text,
+    attachment:{name:x.fname, mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', base64:XLSX.write(x.wb,{type:'base64',bookType:'xlsx'})}};
+  try{
+    const res = await fetch(c.senderUrl, {method:'POST', body:JSON.stringify(payload)});
+    const j = await res.json().catch(()=>null);
+    if(j && j.error) throw new Error(j.error);
+    if(j && j.ok) return 'sent';
+    return 'sent';
+  }catch(err){
+    if(err && /add the|invalid|token|no tab|quota|limit|exception/i.test(err.message)) throw err;
+    // Some browsers block reading Apps Script's reply — send without reading it.
+    await fetch(c.senderUrl, {method:'POST', mode:'no-cors', body:JSON.stringify(payload)});
+    return 'sent (unconfirmed — check your Gmail Sent folder)';
+  }
+};
+M2M.gmail = function(grp){
+  const r = M2M.recipients(grp.head), m = M2M.build(grp), x = M2M.workbook(grp);
+  XLSX.writeFile(x.wb, x.fname);
+  const u = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(r.to.join(',')) + '&cc=' + encodeURIComponent(r.cc.join(',')) +
+            '&su=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(m.text);
+  window.open(u, '_blank');
+  Utils.toast('Gmail draft opened — attach the Excel file that was just downloaded (' + x.fname + ')');
+};
+M2M.render = function(){
+  const card = document.getElementById('m2mail-card'); if(!card) return;
+  const c = M2M.conf(), groups = M2M.groups();
+  document.getElementById('m2mail-url').value = c.senderUrl || '';
+  document.getElementById('m2mail-cc').value = c.defaultCc || '';
+  const body = document.getElementById('m2mail-body');
+  if(!groups.length){ body.innerHTML = '<div class="empty-state">No New / Not Connected leads in this report.</div>'; return; }
+  body.innerHTML = `<table class="attach-table"><tr><th>Sales Head</th><th>Regions</th><th>New</th><th>Not Connected</th><th>NC 8+ days</th><th>To (email)</th><th>Extra CC (this head only)</th><th></th><th></th></tr>` +
+    groups.map((g,i)=>{ const h = c.heads[g.head]||{}; return `<tr data-i="${i}">
+      <td><b>${Utils.escapeHtml(g.head)}</b></td><td>${Utils.escapeHtml(Array.from(g.regions).join(', '))}</td><td>${g.newC}</td><td>${g.ncC}</td><td>${g.ncOld}</td>
+      <td><input class="m2m-to" data-head="${Utils.escapeHtml(g.head)}" value="${Utils.escapeHtml(h.to||'')}" placeholder="name@investoxpert.com" style="min-width:190px;padding:5px 7px;border:1px solid var(--line-strong);border-radius:4px;"></td>
+      <td><input class="m2m-cc" data-head="${Utils.escapeHtml(g.head)}" value="${Utils.escapeHtml(h.cc||'')}" placeholder="optional" style="min-width:160px;padding:5px 7px;border:1px solid var(--line-strong);border-radius:4px;"></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm btn-primary m2m-send" type="button">Send</button> <button class="btn btn-sm m2m-gmail" type="button">Gmail</button> <button class="btn btn-sm m2m-preview" type="button">Preview</button></td>
+      <td class="m2m-status" style="font-size:11.5px;color:var(--text-muted);min-width:90px;"></td></tr>`; }).join('') + '</table>';
+  const save = (inp, key)=>{ const head = inp.dataset.head; c.heads[head] = c.heads[head] || {}; c.heads[head][key] = inp.value.trim(); Utils.saveSettings(); };
+  body.querySelectorAll('.m2m-to').forEach(inp=> inp.addEventListener('change', ()=>save(inp,'to')));
+  body.querySelectorAll('.m2m-cc').forEach(inp=> inp.addEventListener('change', ()=>save(inp,'cc')));
+  body.querySelectorAll('tr[data-i]').forEach(tr=>{
+    const g = groups[+tr.dataset.i], st = tr.querySelector('.m2m-status');
+    tr.querySelector('.m2m-send').addEventListener('click', async ev=>{
+      const b = ev.currentTarget; b.disabled = true; st.textContent = 'Sending…';
+      try{ st.textContent = '✓ ' + await M2M.send(g); st.style.color = 'var(--green)'; }
+      catch(e){ st.textContent = '✕ ' + e.message; st.style.color = 'var(--red)'; }
+      b.disabled = false;
+    });
+    tr.querySelector('.m2m-gmail').addEventListener('click', ()=> M2M.gmail(g));
+    tr.querySelector('.m2m-preview').addEventListener('click', ()=>{
+      const m = M2M.build(g), r = M2M.recipients(g.head);
+      document.getElementById('m2mail-preview').innerHTML = `<div style="font-size:12.5px;margin-bottom:6px;"><b>To:</b> ${Utils.escapeHtml(r.to.join(', ')||'— add email —')}<br><b>CC:</b> ${Utils.escapeHtml(r.cc.join(', ')||'—')}<br><b>Subject:</b> ${Utils.escapeHtml(m.subject)}<br><b>Attachment:</b> ${Utils.escapeHtml(M2M.workbook(g).fname)}</div><div style="border:1px solid var(--line);border-radius:6px;padding:12px;background:#fff;overflow-x:auto;">${m.html}</div>`;
+      document.getElementById('m2mail-preview').scrollIntoView({behavior:'smooth', block:'nearest'});
+    });
+  });
+};
+document.addEventListener('DOMContentLoaded', function(){
+  const u = document.getElementById('m2mail-url'), cc = document.getElementById('m2mail-cc'); if(!u) return;
+  u.addEventListener('change', ()=>{ M2M.conf().senderUrl = u.value.trim(); Utils.saveSettings(); });
+  cc.addEventListener('change', ()=>{ M2M.conf().defaultCc = cc.value.trim(); Utils.saveSettings(); });
+  document.getElementById('m2mail-sendall').addEventListener('click', async ev=>{
+    const rows = Array.from(document.querySelectorAll('#m2mail-body tr[data-i]'));
+    const ready = rows.filter(tr=> tr.querySelector('.m2m-to').value.trim());
+    if(!ready.length){ Utils.toast('Add at least one Sales Head email first'); return; }
+    if(!confirm(`Send the report to ${ready.length} Sales Head(s)?`)) return;
+    ev.currentTarget.disabled = true;
+    for(const tr of ready){ tr.querySelector('.m2m-send').click(); await new Promise(r=>setTimeout(r, 1500)); }
+    ev.currentTarget.disabled = false;
+  });
+});
+</script>
+
 </body>
 </html>
