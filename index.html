@@ -408,6 +408,13 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         <div class="kpi-row" id="m1p-kpis"></div>
         <div class="mini-note" style="margin:-4px 0 12px 2px;">Click a KPI to filter the table.</div>
         <div class="card">
+          <h2>Master-sheet view <small>Same rows and columns as your Master Sheet (Status, Priority, Location, Project, Lead Count, Cost Centre, Agency Source, Source) with the CRM check beside each campaign — leads are matched by project + agency</small></h2>
+          <div class="filter-bar" id="m1pm-filters"></div>
+          <div class="table-wrap"><table class="data" id="m1pm-table"></table></div>
+          <div class="table-foot"><span class="rec-count" id="m1pm-count"></span><div class="pager" id="m1pm-pager"></div></div>
+          <div class="btn-row" style="margin-top:12px;"><button class="btn" id="m1pm-clear">Clear filters</button><button class="btn" id="m1pm-dl-full">Download full Excel</button><button class="btn btn-primary" id="m1pm-dl-filtered">Download filtered Excel</button></div>
+        </div>
+        <div class="card">
           <h2>Project → Cost Centre result <small>Wrong / partly wrong first</small></h2>
           <div class="filter-bar" id="m1p-filters"></div>
           <div class="table-wrap"><table class="data" id="m1p-table"></table></div>
@@ -1524,7 +1531,10 @@ Utils.COLUMN_ALIASES = {
   subResponse:  ['Last Sub Response Type(Sales)','Last Sub Response','Sub Response','Sub Disposition','Call Status'],
   masterCostCentre: ['Cost Centre','Cost Center','Cost Centre Person','Cost Centre Person Name','Cost Center Person Name','Cost Centre (Area)','CC','Cost Centre Name','Sales Head','Mapped To','Map To','Owner Branch','Handler Branch','Branch'],
   masterStatus: ['Status','Campaign Status','Live Status'],
-  masterSource: ['Source','Sub Source','Agency Source','Media Source'],
+  masterSource: ['Source','Sub Source','Media Source','Agency Source'],
+  masterAgency: ['Agency Source','Agency','Vendor'],
+  masterPriority: ['Priority'],
+  masterTarget: ['Lead Count','Leads Target','Target Leads','Target'],
   masterProject: ['Project Name (BPL)','Project Name','Project','BPL','Project (BPL)','Property'],
   crmProject:   ['Project','Project Name','Original Project'],
 };
@@ -2786,7 +2796,7 @@ Utils.pillHtml = function(result){
     'EXPLAINED GAP':'pill-amber','REVIEW REQUIRED':'pill-amber',
     'PERFORMANCE LEAD - SALES ATTENTION':'pill-flag',
     'Clean':'pill-green','Contaminated':'pill-red',
-    'PARTLY WRONG':'pill-amber','NOT IN MASTER SHEET':'pill-amber','NO LEADS IN CRM':'pill-flag'
+    'PARTLY WRONG':'pill-amber','SOURCE OK':'pill-green','SOURCE MISMATCH':'pill-red','NOT IN MASTER SHEET':'pill-amber','NO LEADS IN CRM':'pill-flag'
   };
   const cls = map[result] || 'pill-amber';
   return `<span class="pill ${cls}">${Utils.escapeHtml(result)}</span>`;
@@ -3161,6 +3171,9 @@ const M1P_MASTER_FIELDS = [
   {key:'location', label:'Location (optional — shown for context)', required:false},
   {key:'masterStatus', label:'Status (optional — LIVE / PAUSED / TO BE LIVE)', required:false},
   {key:'masterSource', label:'Source (optional — e.g. MV, AJN, GT/ND; shown next to the CRM sources)', required:false},
+  {key:'masterAgency', label:'Agency Source (optional — Maven, Aajneeti, GTF, DMXD…; used for the master-sheet view)', required:false},
+  {key:'masterPriority', label:'Priority (optional)', required:false},
+  {key:'masterTarget', label:'Lead Count / target (optional)', required:false},
 ];
 const M1P_CRM_FIELDS = [
   {key:'crmProject', label:'Project (4QT "Project")', required:true},
@@ -3183,6 +3196,14 @@ M1P.personKey = function(raw){
 };
 M1P.splitPeople = function(raw){
   return String(raw||'').split(/\s*(?:\/|,|&|\+|;|\band\b)\s*/i).map(s=>s.trim()).filter(Boolean).map(M1P.personKey).filter(p=>p.key && !p.generic);
+};
+// CRM sub sources whose agency has no campaign row for this project in the master
+M1P.noCampaignSources = function(g, rows){
+  const agOf = t=>{ t = String(t||'').trim(); const mc = t.match(/^mcube\s+(.+)$/i); if(mc) t = mc[1]; const r = Utils.resolveSource(t); return Utils.normLoose(r && !r.unmapped ? r.canonical : t); };
+  const have = new Set(rows.map(r=>Utils.normLoose(r.agency)).filter(Boolean));
+  const out = {};
+  g.rows.forEach(x=>{ if(!x.src) return; if(!have.has(agOf(x.src))) out[x.src] = (out[x.src]||0)+1; });
+  return Object.entries(out).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', ');
 };
 M1P.fmtDate = function(d){ return String(d.getDate()).padStart(2,'0') + '-' + d.toLocaleString('en-GB',{month:'short'}) + '-' + d.getFullYear(); };
 M1P.samePerson = function(a, b){
@@ -3219,9 +3240,19 @@ M1P.generate = async function(){
 
   // ---- master: project -> allowed cost centres
   const master = {}; // normLoose(project) -> {project, people:[{name,key}], region}
+  const masterRowsList = [];
   M1P.master.rows.forEach(row=>{
     const project = String(Utils.val(row, mMap.masterProject)||'').trim(); if(!project) return;
     const k = M1P.projectKey(project); if(!k) return;
+    masterRowsList.push({key:k, project:String(project).trim(),
+      status: mMap.masterStatus ? String(Utils.val(row, mMap.masterStatus)||'').trim() : '',
+      priority: mMap.masterPriority ? String(Utils.val(row, mMap.masterPriority)||'').trim() : '',
+      location: mMap.location ? String(Utils.val(row, mMap.location)||'').trim() : '',
+      target: mMap.masterTarget ? String(Utils.val(row, mMap.masterTarget)||'').trim() : '',
+      ccRaw: String(Utils.val(row, mMap.masterCostCentre)||'').trim(),
+      people: M1P.splitPeople(Utils.val(row, mMap.masterCostCentre)),
+      agency: mMap.masterAgency ? String(Utils.val(row, mMap.masterAgency)||'').trim() : '',
+      source: mMap.masterSource ? String(Utils.val(row, mMap.masterSource)||'').trim() : ''});
     const m = master[k] || (master[k] = {project: String(project).replace(/\s*\([^)]*\)\s*/g,' ').trim(), people:[], region:'', statuses:new Set(), sources:new Set(), generic:false});
     if(mMap.masterSource){ const src = String(Utils.val(row, mMap.masterSource)||'').trim(); if(src) m.sources.add(src); }
     const ppl = M1P.splitPeople(Utils.val(row, mMap.masterCostCentre));
@@ -3260,12 +3291,13 @@ M1P.generate = async function(){
     g.rows.push({row, person, branchRaw, src, dt});
   });
 
-  const projectRows = []; const seenMaster = new Set();
+  const projectRows = []; const seenMaster = new Set(); const crmByMaster = {};
   Object.values(byProject).forEach(g=>{
     const fm = findMaster(g.project); const m = fm.m;
     let right = 0, wrong = 0, lastWrong = null; const wrongBySrc = {};
     if(m){
       seenMaster.add(M1P.projectKey(m.project));
+      (crmByMaster[M1P.projectKey(m.project)] = crmByMaster[M1P.projectKey(m.project)] || []).push(g);
       g.rows.forEach(x=>{
         const ok = x.person.key && m.people.some(p=>M1P.samePerson(p.key, x.person.key));
         if(ok) right++; else {
@@ -3292,6 +3324,7 @@ M1P.generate = async function(){
       lastWrongLead: lastWrong ? M1P.fmtDate(lastWrong) : '',
       srcInCrm: Object.entries(g.srcCounts).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', '),
       srcInMaster: m ? Array.from(m.sources).join(', ') : '',
+      noCampaignSrc: m ? M1P.noCampaignSources(g, masterRowsList.filter(r=>r.key===M1P.projectKey(m.project))) : '',
       wrongDetail: Object.entries(wrongBySrc).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', '),
       total: g.total, rightCount: m ? right : '', wrongCount: m ? wrong : '', result,
       note: !m ? (fm.closest ? 'Closest name in master: '+fm.closest : 'Add this project to the master sheet')
@@ -3301,10 +3334,59 @@ M1P.generate = async function(){
   // master projects with no leads in this CRM file
   Object.values(master).forEach(m=>{
     if(seenMaster.has(M1P.projectKey(m.project))) return;
-    projectRows.push({lastLead:'', lastWrongLead:'', srcInCrm:'', wrongDetail:'', srcInMaster:Array.from(m.sources).join(', '), project:'', masterProject:m.project, region:m.region, masterStatus:Array.from(m.statuses).join(' / '), ccInMaster:m.people.map(p=>p.name).join(' / ') || '(not assigned in master)', ccInCrm:'', total:0, rightCount:'', wrongCount:'', result:'NO LEADS IN CRM', note:'No leads for this project in the uploaded 4QT file (or the project name differs in CRM)'});
+    projectRows.push({noCampaignSrc:'', lastLead:'', lastWrongLead:'', srcInCrm:'', wrongDetail:'', srcInMaster:Array.from(m.sources).join(', '), project:'', masterProject:m.project, region:m.region, masterStatus:Array.from(m.statuses).join(' / '), ccInMaster:m.people.map(p=>p.name).join(' / ') || '(not assigned in master)', ccInCrm:'', total:0, rightCount:'', wrongCount:'', result:'NO LEADS IN CRM', note:'No leads for this project in the uploaded 4QT file (or the project name differs in CRM)'});
   });
   const order = {'WRONG MAPPING':0,'PARTLY WRONG':1,'NOT IN MASTER SHEET':2,'UNABLE TO VALIDATE':3,'CORRECT':4,'NO LEADS IN CRM':5};
   projectRows.sort((a,b)=> (order[a.result]-order[b.result]) || (b.wrongCount||0)-(a.wrongCount||0) || (b.total-a.total));
+
+  // ---- Master-sheet view: one row per master campaign (project + agency) ----
+  const agencyOf = function(raw){
+    let t = String(raw||'').trim(); if(!t) return '';
+    const mc = t.match(/^mcube\s+(.+)$/i); if(mc) t = mc[1];       // IVR leads count under their agency
+    const r = Utils.resolveSource(t); return Utils.normLoose(r && !r.unmapped ? r.canonical : t);
+  };
+  // Sub-source audit: does each CRM sub source belong to one of the Sources the
+  // master lists for this campaign? "MV" accepts META-MV / Meta MV (and the IVR
+  // "Mcube MV"); "GT/ND" accepts GT and New Discovery but NOT GTAW or GTPL.
+  const srcSig = function(raw){
+    let t = String(raw||'').trim(); const mc = t.match(/^mcube\s+(.+)$/i); if(mc) t = mc[1];
+    const r = Utils.resolveSource(t);
+    return (r && !r.unmapped) ? Utils.normLoose(r.canonical)+'|'+Utils.normLoose(r.category) : 'raw|'+Utils.normLoose(t);
+  };
+  const masterSrcSigs = function(src){
+    const toks = String(src||'').split(/\s*(?:,|\/|&|\+|\band\b)\s*/i).map(x=>x.trim()).filter(Boolean);
+    return new Set(toks.map(srcSig));
+  };
+  const masterView = masterRowsList.map(mr=>{
+    const groups = crmByMaster[mr.key] || [];
+    const ag = Utils.normLoose(mr.agency);
+    const noAgency = !ag || /not assigned/.test(ag);
+    let leads = 0, right = 0, wrong = 0, last = null; const cc = {}, subs = {}, offSrc = {};
+    const okSigs = masterSrcSigs(mr.source);
+    groups.forEach(g=> g.rows.forEach(x=>{
+      if(!noAgency && agencyOf(x.src) !== ag) return;
+      leads++;
+      const nm = x.person.name || '(blank)'; cc[nm] = (cc[nm]||0)+1;
+      if(x.src) subs[x.src] = (subs[x.src]||0)+1;
+      if(x.src && okSigs.size && !okSigs.has(srcSig(x.src))) offSrc[x.src] = (offSrc[x.src]||0)+1;
+      if(x.dt && !isNaN(x.dt) && (!last || x.dt > last)) last = x.dt;
+      if(x.person.key && mr.people.some(p=>M1P.samePerson(p.key, x.person.key))) right++; else wrong++;
+    }));
+    let result;
+    if(!mr.people.length) result = 'UNABLE TO VALIDATE';
+    else if(!leads) result = 'NO LEADS IN CRM';
+    else result = wrong===0 ? 'CORRECT' : (right===0 ? 'WRONG MAPPING' : 'PARTLY WRONG');
+    return Object.assign({}, mr, {
+      crmProjects: groups.map(g=>g.project).filter(p=>Utils.normLoose(p)!==Utils.normLoose(mr.project)).join(', '),
+      crmLeads: leads, subInCrm: Object.entries(subs).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', '),
+      ccInCrm: Object.entries(cc).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', '),
+      rightCount: leads ? right : '', wrongCount: leads ? wrong : '', lastLead: last ? M1P.fmtDate(last) : '', result,
+      offSource: Object.entries(offSrc).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', '),
+      sourceAudit: !leads ? '' : (!okSigs.size ? 'UNABLE TO VALIDATE' : (Object.keys(offSrc).length ? 'SOURCE MISMATCH' : 'SOURCE OK')),
+      note: noAgency ? 'No agency in master — all CRM leads of the project counted' : (!mr.people.length ? 'No cost centre in master' : '')
+    });
+  });
+  M1P._masterView = masterView;
 
   const cnt = r=>projectRows.filter(x=>x.result===r).length;
   document.getElementById('m1p-report').style.display = 'block';
@@ -3326,10 +3408,25 @@ M1P.generate = async function(){
       {key:'ccInCrm', label:'Cost Centre in CRM (leads)', wrap:true}, {key:'srcInCrm', label:'Source in CRM (leads)', wrap:true},
       {key:'total', label:'Leads'}, {key:'lastLead', label:'Last Lead Date'}, {key:'rightCount', label:'Right CC'}, {key:'wrongCount', label:'Wrong CC'},
       {key:'wrongDetail', label:'Wrong CC — by Source', wrap:true}, {key:'lastWrongLead', label:'Last Wrong-CC Lead'},
+      {key:'noCampaignSrc', label:'CRM Sources with no master campaign', wrap:true},
       {key:'result', label:'Result', pill:true}, {key:'note', label:'Note', wrap:true}],
     filterDefs:[{key:'result', label:'Result'}, {key:'masterStatus', label:'Master Status'}, {key:'ccInMaster', label:'Cost Centre (Master)'}, {key:'region', label:'Location'}]
   });
   document.querySelectorAll('#m1p-kpis .kpi[data-r]').forEach(k=> k.addEventListener('click', ()=> M1P.table.setFilters({result:k.dataset.r})));
+
+  M1P.masterTable = new DataTable({prefix:'m1pm', rows:masterView, filename:'master_sheet_mapping_check.xlsx',
+    columns:[
+      {key:'status', label:'Status'}, {key:'priority', label:'Priority'}, {key:'location', label:'Location'},
+      {key:'project', label:'Project Name', wrap:true}, {key:'target', label:'Lead Count'},
+      {key:'ccRaw', label:'Cost Centre'}, {key:'agency', label:'Agency Source'}, {key:'source', label:'Source'},
+      {key:'crmLeads', label:'Leads in CRM'}, {key:'lastLead', label:'Last Lead Date'},
+      {key:'ccInCrm', label:'Cost Centre in CRM (leads)', wrap:true}, {key:'subInCrm', label:'Sub Source in CRM', wrap:true},
+      {key:'rightCount', label:'Right CC'}, {key:'wrongCount', label:'Wrong CC'},
+      {key:'result', label:'Cost Centre Result', pill:true},
+      {key:'offSource', label:'Sub Sources not in master Source', wrap:true}, {key:'sourceAudit', label:'Source Result', pill:true},
+      {key:'note', label:'Note', wrap:true}],
+    filterDefs:[{key:'status', label:'Status'}, {key:'location', label:'Location'}, {key:'ccRaw', label:'Cost Centre'}, {key:'agency', label:'Agency Source'}, {key:'result', label:'Cost Centre Result'}, {key:'sourceAudit', label:'Source Result'}]
+  });
 
   document.getElementById('m1pl-card').style.display = wrongLeads.length ? 'block' : 'none';
   if(wrongLeads.length){
@@ -4059,7 +4156,7 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
   M2._costCentreExcluded = costCentreExcluded || 0;
   M2.renderDispositionCheck(leads);
   M2._reportLeads = leads;
-  try{ M2M.conf().manual = {}; M2M.render(); }catch(e){ console.warn('report mail panel', e); }
+  try{ M2M.conf().manual = {}; M2M.conf().periodLong = ''; M2M.render(); }catch(e){ console.warn('report mail panel', e); }
 
   // "New" and "Not Connected" as two separate columns instead of one combined
   // Status column — each lead only ever fills in ONE of these (a lead is either
