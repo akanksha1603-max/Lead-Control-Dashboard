@@ -30,6 +30,24 @@
   --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 }
 *{box-sizing:border-box;}
+.field.combo{position:relative;}
+.field.combo .combo-input{cursor:pointer;padding-right:52px;background:#fff;}
+.combo-caret{position:absolute;right:10px;bottom:9px;color:var(--text-muted);cursor:pointer;font-size:12px;}
+.combo-clear{position:absolute;right:26px;bottom:7px;border:0;background:transparent;color:var(--text-faint);cursor:pointer;font-size:12px;padding:2px 4px;}
+.combo-clear:hover{color:var(--red);}
+.combo-panel{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line-strong);border-radius:6px;box-shadow:0 8px 24px rgba(20,25,34,.14);z-index:50;}
+.combo-search{width:100%;border:0;border-bottom:1px solid var(--line);padding:9px 10px;font-size:13px;font-family:inherit;border-radius:6px 6px 0 0;outline:none;}
+.combo-list{max-height:280px;overflow-y:auto;padding:4px 0;}
+.combo-group{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-faint);padding:8px 10px 3px;font-weight:600;}
+.combo-opt{padding:6px 10px;cursor:pointer;font-size:13px;display:flex;flex-direction:column;}
+.combo-opt small{color:var(--text-muted);font-size:11px;}
+.combo-opt.active,.combo-opt:hover{background:var(--accent-tint);}
+.combo-new{color:var(--accent);font-weight:600;}
+.combo-empty{padding:10px;color:var(--text-muted);font-size:12.5px;}
+.combo-hint{font-size:11.5px;color:var(--text-muted);margin:-6px 0 10px;line-height:1.5;}
+.combo-hint.warn{color:var(--amber);}
+.combo-hint a{color:var(--accent);}
+
 html,body{margin:0;padding:0;}
 body{
   font-family:var(--sans);
@@ -293,9 +311,9 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       <div class="sub">Performance-marketing lead verification &amp; sales-accountability console</div>
     </div>
     <nav class="rail-nav" id="railNav">
-      <button class="rail-item active" data-view="v1"><span class="num">01</span><span><span class="lbl">CRM Mapping Mismatch</span><span class="desc">Project / source / ownership audit</span></span></button>
+      <button class="rail-item active" data-view="v1"><span class="num">01</span><span><span class="lbl">CRM Mapping Mismatch</span><span class="desc">Project → Cost Centre audit</span></span></button>
       <button class="rail-item" data-view="v2"><span class="num">02</span><span><span class="lbl">New &amp; Not Connected</span><span class="desc">Sales follow-up control</span></span></button>
-      <button class="rail-item" data-view="v3"><span class="num">03</span><span><span class="lbl">Agency → CRM Gap</span><span class="desc">Lead reconciliation</span></span></button>
+      <button class="rail-item" data-view="v3"><span class="num">03</span><span><span class="lbl">Lead Count</span><span class="desc">CRM leads by source / project</span></span></button>
       <button class="rail-item" data-view="v4"><span class="num">04</span><span><span class="lbl">Mapping Mail Generator</span><span class="desc">4QT mapping mail</span></span></button>
       <button class="rail-item" data-view="v5"><span class="num">05</span><span><span class="lbl">Location Master</span><span class="desc">Region → Sales Head / Cost Centre</span></span></button>
       <button class="rail-item" data-view="v6"><span class="num">06</span><span><span class="lbl">Settings</span><span class="desc">Customize masters &amp; thresholds</span></span></button>
@@ -310,9 +328,51 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       <div class="view-head">
         <div>
           <h1>CRM Mapping Mismatch</h1>
-          <p>Verify that CRM + Project (BPL) + Source/Sub-source is mapped to the correct Sales Head.</p>
+          <p>Check that every project's leads in 4QT sit under the Cost Centre given in the master sheet.</p>
         </div>
       </div>
+
+      <div class="card">
+        <h2>1 · Project → Cost Centre check</h2>
+        <div class="help-note">Upload your project master sheet (Project + Cost Centre) and the 4QT export. Each project's leads are checked against the master's Cost Centre using 4QT's <b>Handler Branch</b> (e.g. "Uday Pratap Singh-Noida" → Uday Pratap Singh). A master cell can list more than one person (e.g. "Mayank Bist / Sanjeev Tiwari").</div>
+        <div class="upload-grid">
+          <div class="upload-box" id="m1p-box-master">
+            <div class="u-title">Project Master Sheet</div>
+            <div class="u-hint">One row per project: Project Name (BPL) + Cost Centre</div>
+            <input type="file" id="m1p-file-master" accept=".xlsx,.xls,.csv">
+            <div class="u-status empty" id="m1p-status-master">No file uploaded</div>
+          </div>
+          <div class="upload-box" id="m1p-box-crm">
+            <div class="u-title">4QT CRM Export</div>
+            <div class="u-hint">EnquiryDetailsAllData — one file or several</div>
+            <input type="file" id="m1p-file-crm" accept=".xlsx,.xls,.csv" multiple>
+            <div class="u-status empty" id="m1p-status-crm">No file uploaded</div>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:14px;"><button class="btn btn-primary" id="m1p-generate" disabled>Check project mapping</button></div>
+      </div>
+
+      <div id="m1p-report" style="display:none;">
+        <div class="kpi-row" id="m1p-kpis"></div>
+        <div class="mini-note" style="margin:-4px 0 12px 2px;">Click a KPI to filter the table.</div>
+        <div class="card">
+          <h2>Project → Cost Centre result <small>Wrong / partly wrong first</small></h2>
+          <div class="filter-bar" id="m1p-filters"></div>
+          <div class="table-wrap"><table class="data" id="m1p-table"></table></div>
+          <div class="table-foot"><span class="rec-count" id="m1p-count"></span><div class="pager" id="m1p-pager"></div></div>
+          <div class="btn-row" style="margin-top:12px;"><button class="btn" id="m1p-clear">Clear filters</button><button class="btn" id="m1p-dl-full">Download full Excel</button><button class="btn btn-primary" id="m1p-dl-filtered">Download filtered Excel</button></div>
+        </div>
+        <div class="card" id="m1pl-card" style="display:none;">
+          <h2>Leads under the wrong Cost Centre</h2>
+          <div class="filter-bar" id="m1pl-filters"></div>
+          <div class="table-wrap"><table class="data" id="m1pl-table"></table></div>
+          <div class="table-foot"><span class="rec-count" id="m1pl-count"></span><div class="pager" id="m1pl-pager"></div></div>
+          <div class="btn-row" style="margin-top:12px;"><button class="btn" id="m1pl-clear">Clear filters</button><button class="btn" id="m1pl-dl-full">Download full Excel</button><button class="btn btn-primary" id="m1pl-dl-filtered">Download filtered Excel</button></div>
+        </div>
+      </div>
+
+      <details style="margin-top:6px;">
+      <summary style="cursor:pointer;font-weight:600;margin:6px 0 12px;">2 · Detailed check — Project + Source → Sales Head (mapping from our side)</summary>
 
       <div class="card">
         <h2>1 · Upload source files</h2>
@@ -360,6 +420,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           </div>
         </div>
       </div>
+      </details>
     </section>
 
     <!-- MODULE 2 -->
@@ -478,20 +539,20 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
     <section class="view" id="v3">
       <div class="view-head">
         <div>
-          <h1>Agency → CRM Lead Gap</h1>
-          <p>Reconcile leads the agency says it generated against leads that actually landed in CRM.</p>
+          <h1>Lead Count</h1>
+          <p>How many leads landed in 4QT — by source, project and day.</p>
         </div>
       </div>
 
       <div class="card">
-        <h2>1 · Upload raw data</h2>
-        <div class="help-note">Multiple files per box are combined automatically.</div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:12px;">
+        <h2>1 · Upload 4QT CRM data</h2>
+        <div class="help-note">Upload one 4QT export or several — they're combined automatically.</div>
+        <label style="display:none;align-items:center;gap:8px;font-size:12.5px;margin-bottom:12px;">
           <input type="checkbox" id="m3-agency-summary-toggle">
           The agency file is already a per-project summary (has a pre-computed "Total Leads" count per project — like a City-wise Projects report) rather than raw one-row-per-lead data
         </label>
         <div class="upload-grid">
-          <div class="upload-box" id="m3-box-agency">
+          <div class="upload-box" id="m3-box-agency" style="display:none;">
             <div class="u-title">Agency Raw Data</div>
             <div class="u-hint">One row per lead — one file or several (e.g. per source)</div>
             <input type="file" id="m3-file-agency" accept=".xlsx,.xls,.csv,.pdf" multiple>
@@ -511,8 +572,8 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           </div>
         </div>
         <div class="btn-row" style="margin-top:14px;">
-          <button class="btn btn-primary" id="m3-generate" disabled>Generate report</button>
-          <span class="mini-note">The 4QT CRM file is required. Agency file is optional — without it, you'll get a CRM-only Lead Count view with no gap comparison.</span>
+          <button class="btn btn-primary" id="m3-generate" disabled>Generate lead count</button>
+          <span class="mini-note">Upload the 4QT CRM file, then generate the lead count.</span>
         </div>
       </div>
 
@@ -620,7 +681,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         <div class="mail-grid">
           <div>
             <div class="field" id="f-project"><label>Project Name (BPL)</label><input id="m4-project"></div>
-            <div class="field" id="f-source"><label>Source</label><input id="m4-source"></div>
+            <div class="field" id="f-source"><label>Sub Source</label><input id="m4-source"></div>
             <div class="field" id="f-head"><label>Sales Head (Map To) <span class="req-star">*</span></label><input id="m4-head"></div>
           </div>
           <div>
@@ -629,6 +690,15 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
             <button class="btn btn-sm" id="m4-add-member">+ Add member</button>
           </div>
         </div>
+      </div>
+
+      <div class="card">
+        <details id="m4-pm">
+          <summary style="cursor:pointer;font-weight:600;">Manage project list <small id="m4-pm-count" style="color:var(--text-muted);font-weight:400;"></small></summary>
+          <div class="help-note" style="margin-top:8px;">Projects are added automatically from every 4QT file you load in "New &amp; Not Connected" and from every mail you copy or open in Gmail. When a project is renamed, use <b>Rename</b> — the old name is kept so searching it still finds the project. <b>Archive</b> projects that are no longer live; they stay searchable but drop out of the list.</div>
+          <div class="btn-row" style="margin:8px 0;"><input id="m4-pm-search" placeholder="Search the list…" style="padding:7px 9px;border:1px solid var(--line-strong);border-radius:5px;font-size:13px;min-width:260px;"><button class="btn btn-sm" id="m4-pm-add">+ Add project</button></div>
+          <div id="m4-pm-body" style="max-height:360px;overflow:auto;"></div>
+        </details>
       </div>
 
       <div class="card">
@@ -1137,6 +1207,7 @@ Utils.DEFAULT_SETTINGS = function(){
     googleApiKey: '',
     liveConnections: [],
     mailTemplates: JSON.parse(JSON.stringify(Utils.DEFAULT_MAIL_TEMPLATES)),
+    projectMaster: [],
     lsqMappingRegistry: [] // [{email, sources:[...], projects:[...]}] — accumulates across every LSQ mapping mail sent, since LeadSquared's own attachment format is one row per person listing every source/project they've ever been mapped to, not just the current mail
   };
 };
@@ -1381,6 +1452,10 @@ Utils.COLUMN_ALIASES = {
   followUpCount:['Follow Up Counter','Followup Counter','No Of Follow Ups','Follow Up Count','Number Of Followups','Follow Ups','Call Attempts','Counter'],
   salesHeadBranch: ['Owner Branch'],
   areaBranch:   ['Handler Branch'],
+  masterCostCentre: ['Cost Centre','Cost Center','Cost Centre Person','Cost Centre Person Name','Cost Center Person Name','Cost Centre (Area)','CC','Cost Centre Name','Sales Head','Mapped To','Map To','Owner Branch','Handler Branch','Branch'],
+  masterStatus: ['Status','Campaign Status','Live Status'],
+  masterProject: ['Project Name (BPL)','Project Name','Project','BPL','Project (BPL)','Property'],
+  crmProject:   ['Project','Project Name','Original Project'],
 };
 
 /* Detect best-matching header for each canonical field.
@@ -2639,7 +2714,8 @@ Utils.pillHtml = function(result){
     'POSSIBLE MATCH':'pill-amber','UNABLE TO VALIDATE':'pill-amber',
     'EXPLAINED GAP':'pill-amber','REVIEW REQUIRED':'pill-amber',
     'PERFORMANCE LEAD - SALES ATTENTION':'pill-flag',
-    'Clean':'pill-green','Contaminated':'pill-red'
+    'Clean':'pill-green','Contaminated':'pill-red',
+    'PARTLY WRONG':'pill-amber','NOT IN MASTER SHEET':'pill-amber','NO LEADS IN CRM':'pill-flag'
   };
   const cls = map[result] || 'pill-amber';
   return `<span class="pill ${cls}">${Utils.escapeHtml(result)}</span>`;
@@ -3002,6 +3078,192 @@ M1.buildReport = function(rows, crmContaminatedCount, territoryExcludedCount){
 </script>
 <script>
 /* ============================================================
+   MODULE 1A — PROJECT → COST CENTRE CHECK (master sheet vs 4QT)
+   Every project in the master sheet has one (or more) Cost Centre person.
+   For each project in the 4QT export, every lead should sit under that
+   Cost Centre (4QT "Handler Branch", e.g. "Uday Pratap Singh-Noida").
+   ============================================================ */
+const M1P = { master:null, crm:null };
+const M1P_MASTER_FIELDS = [
+  {key:'masterProject', label:'Project Name (BPL)', required:true},
+  {key:'masterCostCentre', label:'Cost Centre (the person the project should be mapped to)', required:true},
+  {key:'location', label:'Location (optional — shown for context)', required:false},
+  {key:'masterStatus', label:'Status (optional — LIVE / PAUSED / TO BE LIVE)', required:false},
+];
+const M1P_CRM_FIELDS = [
+  {key:'crmProject', label:'Project (4QT "Project")', required:true},
+  {key:'areaBranch', label:'Cost Centre in CRM (4QT "Handler Branch", e.g. "Uday Pratap Singh-Noida")', required:true},
+  {key:'leadId', label:'Enquiry No. (optional)', required:false},
+  {key:'leadName', label:'Customer (optional)', required:false},
+  {key:'userName', label:'Enquiry Owner (optional)', required:false},
+  {key:'source', label:'Source (optional)', required:false},
+  {key:'date', label:'Enquiry Date (optional)', required:false},
+];
+M1P.personKey = function(raw){
+  // Master-sheet cost centres come in several shapes: "Amit Madaan-Pune",
+  // "Santanu - Chennai", "Birjesh Srivastava (Noida)", "Sanjiv Tiwari - NRI".
+  // CRM gives "Uday Pratap Singh-Noida". Reduce all of them to the person.
+  let t = String(raw||'').replace(/\([^)]*\)/g,' ').trim();
+  if(!t || /not\s*assigned|^all\b.*\btl$|^-+$/i.test(t)) return {name:'', key:'', generic:true};
+  t = t.split(/\s+-\s+|\s*-\s*(?=[A-Z][a-z]+$)|-(?=[^-]+$)/)[0].trim();
+  const name = Utils.prettifyPersonName(Utils.extractNameFromBranch(t) || t);
+  return {name, key: Utils.normLoose(name)};
+};
+M1P.splitPeople = function(raw){
+  return String(raw||'').split(/\s*(?:\/|,|&|\+|;|\band\b)\s*/i).map(s=>s.trim()).filter(Boolean).map(M1P.personKey).filter(p=>p.key && !p.generic);
+};
+M1P.samePerson = function(a, b){
+  if(!a || !b) return false;
+  if(a===b || Utils.similarity(a,b) >= 0.85) return true;
+  // "Santanu" (master) vs "Santanu Ghosh" (CRM): same first name and every word
+  // of the shorter name appears in the longer one.
+  const ta = a.split(' '), tb = b.split(' ');
+  const [s, l] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+  return s[0]===l[0] && s.every(w=>l.indexOf(w)>=0);
+};
+// Master project names carry campaign tags — "(Focus)", "(Event On 13th Sept)",
+// "(Developer Account)", "(Sus)" — that the CRM project name won't have.
+M1P.projectKey = function(p){
+  // NRI campaigns are separate projects (own Cost Centre). The master writes
+  // "Brigade Autograph NRI Bangalore", the CRM "Brigade Autograph Bangalore NRI" —
+  // so the word NRI is moved to the end before comparing.
+  const k = Utils.normLoose(String(p||'').replace(/\([^)]*\)/g,' '));
+  const t = k.split(' ').filter(Boolean);
+  return t.indexOf('nri')>=0 ? t.filter(w=>w!=='nri').concat(['nri']).join(' ') : k;
+};
+M1P.isNri = function(key){ return / nri$/.test(key) || key==='nri'; };
+
+M1P.generate = async function(){
+  const mDet = Utils.detectColumns(M1P.master.headers, M1P_MASTER_FIELDS.map(f=>f.key), M1P.master.rows);
+  const mMap = await Utils.resolveMapping('Map columns — Project Master Sheet','Which column holds the project and which holds its Cost Centre?', M1P_MASTER_FIELDS, M1P.master.headers, mDet);
+  if(!mMap) return;
+  const cDet = Utils.detectColumns(M1P.crm.headers, M1P_CRM_FIELDS.map(f=>f.key), M1P.crm.rows);
+  const cMap = await Utils.resolveMapping('Map columns — 4QT CRM Export','Confirm the Project and the Cost Centre column (Handler Branch) in your 4QT export.', M1P_CRM_FIELDS, M1P.crm.headers, cDet);
+  if(!cMap) return;
+
+  // ---- master: project -> allowed cost centres
+  const master = {}; // normLoose(project) -> {project, people:[{name,key}], region}
+  M1P.master.rows.forEach(row=>{
+    const project = String(Utils.val(row, mMap.masterProject)||'').trim(); if(!project) return;
+    const k = M1P.projectKey(project); if(!k) return;
+    const m = master[k] || (master[k] = {project: String(project).replace(/\s*\([^)]*\)\s*/g,' ').trim(), people:[], region:'', statuses:new Set(), generic:false});
+    const ppl = M1P.splitPeople(Utils.val(row, mMap.masterCostCentre));
+    if(!ppl.length) m.generic = true;
+    ppl.forEach(p=>{ if(!m.people.some(x=>x.key===p.key)) m.people.push(p); });
+    if(mMap.location && !m.region) m.region = String(Utils.val(row, mMap.location)||'').trim();
+    if(mMap.masterStatus){ const st = String(Utils.val(row, mMap.masterStatus)||'').trim(); if(st) m.statuses.add(st.toUpperCase()); }
+  });
+  const masterKeys = Object.keys(master);
+  const findMaster = function(project){
+    const k = M1P.projectKey(project); if(!k) return {m:null};
+    if(master[k]) return {m:master[k], how:'exact'};
+    let best=null, score=0;
+    // never match an NRI project to a domestic one (or the other way round)
+    masterKeys.forEach(mk=>{ if(M1P.isNri(mk)!==M1P.isNri(k)) return; const sc = Utils.similarity(k, mk); if(sc>score){ score=sc; best=mk; } });
+    if(best && score >= 0.9) return {m:master[best], how:'spelling'};
+    return {m:null, closest: best && score>=0.6 ? master[best].project : ''};
+  };
+
+  // ---- CRM leads grouped by project
+  const byProject = {}; const wrongLeads = []; let blankProject = 0, excludedLeads = 0;
+  const excludedNames = (Utils.Settings.excludedCostCentreNames||[]).map(n=>Utils.normLoose(n)).filter(Boolean);
+  M1P.crm.rows.forEach(row=>{
+    const project = String(Utils.val(row, cMap.crmProject)||'').trim();
+    if(!project){ blankProject++; return; }
+    const branchRaw = String(Utils.val(row, cMap.areaBranch)||'').trim();
+    const person = M1P.personKey(branchRaw);
+    if(person.key && excludedNames.some(n=> person.key===n || person.key.split(' ')[0]===n.split(' ')[0] && n.split(' ').every(w=>person.key.split(' ').indexOf(w)>=0))){ excludedLeads++; return; }
+    const g = byProject[project] || (byProject[project] = {project, total:0, ccCounts:{}, rows:[]});
+    g.total++; const label = person.name || '(blank)';
+    g.ccCounts[label] = (g.ccCounts[label]||0)+1;
+    g.rows.push({row, person, branchRaw});
+  });
+
+  const projectRows = []; const seenMaster = new Set();
+  Object.values(byProject).forEach(g=>{
+    const fm = findMaster(g.project); const m = fm.m;
+    let right = 0, wrong = 0;
+    if(m){
+      seenMaster.add(M1P.projectKey(m.project));
+      g.rows.forEach(x=>{
+        const ok = x.person.key && m.people.some(p=>M1P.samePerson(p.key, x.person.key));
+        if(ok) right++; else {
+          wrong++;
+          wrongLeads.push({
+            leadId: cMap.leadId ? Utils.val(x.row, cMap.leadId) : '', leadName: cMap.leadName ? Utils.val(x.row, cMap.leadName) : '',
+            project: g.project, source: cMap.source ? Utils.val(x.row, cMap.source) : '',
+            owner: cMap.userName ? Utils.prettifyPersonName(Utils.val(x.row, cMap.userName)) : '',
+            ccInCrm: x.person.name || '(blank)', branchInCrm: x.branchRaw, ccInMaster: m.people.map(p=>p.name).join(' / '),
+            date: cMap.date ? Utils.val(x.row, cMap.date) : ''
+          });
+        }
+      });
+    }
+    const result = !m ? 'NOT IN MASTER SHEET' : (m.people.length===0 ? 'UNABLE TO VALIDATE' : (wrong===0 ? 'CORRECT' : (right===0 ? 'WRONG MAPPING' : 'PARTLY WRONG')));
+    projectRows.push({
+      project: g.project, masterProject: m ? m.project : '', region: m ? m.region : '',
+      ccInMaster: m ? (m.people.map(p=>p.name).join(' / ') || '(not assigned in master)') : '',
+      masterStatus: m ? Array.from(m.statuses).join(' / ') : '',
+      ccInCrm: Object.entries(g.ccCounts).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', '),
+      total: g.total, rightCount: m ? right : '', wrongCount: m ? wrong : '', result,
+      note: !m ? (fm.closest ? 'Closest name in master: '+fm.closest : 'Add this project to the master sheet')
+                : (fm.how==='spelling' ? 'Name differs from master ("'+m.project+'") — matched by spelling' : '')
+    });
+  });
+  // master projects with no leads in this CRM file
+  Object.values(master).forEach(m=>{
+    if(seenMaster.has(M1P.projectKey(m.project))) return;
+    projectRows.push({project:'', masterProject:m.project, region:m.region, masterStatus:Array.from(m.statuses).join(' / '), ccInMaster:m.people.map(p=>p.name).join(' / ') || '(not assigned in master)', ccInCrm:'', total:0, rightCount:'', wrongCount:'', result:'NO LEADS IN CRM', note:'No leads for this project in the uploaded 4QT file (or the project name differs in CRM)'});
+  });
+  const order = {'WRONG MAPPING':0,'PARTLY WRONG':1,'NOT IN MASTER SHEET':2,'UNABLE TO VALIDATE':3,'CORRECT':4,'NO LEADS IN CRM':5};
+  projectRows.sort((a,b)=> (order[a.result]-order[b.result]) || (b.wrongCount||0)-(a.wrongCount||0) || (b.total-a.total));
+
+  const cnt = r=>projectRows.filter(x=>x.result===r).length;
+  document.getElementById('m1p-report').style.display = 'block';
+  document.getElementById('m1p-kpis').innerHTML = `
+    <div class="kpi tone-accent"><div class="k-label">Projects in CRM file</div><div class="k-value">${Object.keys(byProject).length}</div></div>
+    <div class="kpi tone-green clickable" data-r="CORRECT"><div class="k-label">Correctly mapped</div><div class="k-value">${cnt('CORRECT')}</div></div>
+    <div class="kpi tone-red clickable" data-r="WRONG MAPPING"><div class="k-label">Wrong cost centre</div><div class="k-value">${cnt('WRONG MAPPING')}</div></div>
+    <div class="kpi tone-amber clickable" data-r="PARTLY WRONG"><div class="k-label">Partly wrong (some leads)</div><div class="k-value">${cnt('PARTLY WRONG')}</div></div>
+    <div class="kpi tone-amber clickable" data-r="NOT IN MASTER SHEET"><div class="k-label">Not in master sheet</div><div class="k-value">${cnt('NOT IN MASTER SHEET')}</div></div>
+    <div class="kpi tone-accent clickable" data-r="NO LEADS IN CRM"><div class="k-label">Master projects with no CRM leads</div><div class="k-value">${cnt('NO LEADS IN CRM')}</div></div>
+    <div class="kpi tone-red"><div class="k-label">Leads under the wrong cost centre</div><div class="k-value">${wrongLeads.length}</div></div>
+    ${excludedLeads ? `<div class="kpi tone-accent"><div class="k-label">Not checked — held by excluded names in Settings (${Utils.escapeHtml((Utils.Settings.excludedCostCentreNames||[]).join(', '))})</div><div class="k-value">${excludedLeads}</div></div>` : ''}`;
+  if(blankProject) Utils.toast(`${blankProject} CRM row(s) have no project name and were skipped`);
+
+  M1P.table = new DataTable({prefix:'m1p', rows:projectRows, filename:'project_cost_centre_check.xlsx',
+    columns:[
+      {key:'project', label:'Project in CRM', wrap:true}, {key:'masterProject', label:'Project in Master Sheet', wrap:true},
+      {key:'masterStatus', label:'Master Status'}, {key:'ccInMaster', label:'Cost Centre (Master)'}, {key:'ccInCrm', label:'Cost Centre in CRM (leads)', wrap:true},
+      {key:'total', label:'Leads'}, {key:'rightCount', label:'Right CC'}, {key:'wrongCount', label:'Wrong CC'},
+      {key:'result', label:'Result', pill:true}, {key:'note', label:'Note', wrap:true}],
+    filterDefs:[{key:'result', label:'Result'}, {key:'masterStatus', label:'Master Status'}, {key:'ccInMaster', label:'Cost Centre (Master)'}, {key:'region', label:'Location'}]
+  });
+  document.querySelectorAll('#m1p-kpis .kpi[data-r]').forEach(k=> k.addEventListener('click', ()=> M1P.table.setFilters({result:k.dataset.r})));
+
+  document.getElementById('m1pl-card').style.display = wrongLeads.length ? 'block' : 'none';
+  if(wrongLeads.length){
+    M1P.leadTable = new DataTable({prefix:'m1pl', rows:wrongLeads, filename:'leads_wrong_cost_centre.xlsx',
+      columns:[{key:'leadId',label:'Enquiry No.'},{key:'leadName',label:'Customer'},{key:'project',label:'Project',wrap:true},{key:'source',label:'Source'},
+               {key:'owner',label:'Enquiry Owner'},{key:'branchInCrm',label:'Handler Branch in CRM'},{key:'ccInMaster',label:'Should be (Master)'},{key:'date',label:'Enquiry Date'}],
+      filterDefs:[{key:'ccInCrm',label:'Cost Centre in CRM'},{key:'ccInMaster',label:'Should be (Master)'},{key:'project',label:'Project'},{key:'source',label:'Source'}]
+    });
+  }
+};
+
+document.addEventListener('DOMContentLoaded', function(){
+  const ready = ()=>{ document.getElementById('m1p-generate').disabled = !(M1P.master && M1P.crm); };
+  new FileBox({inputId:'m1p-file-master', boxId:'m1p-box-master', statusId:'m1p-status-master', onChange:d=>{ M1P.master=d; ready(); }});
+  new MultiFileBox({inputId:'m1p-file-crm', boxId:'m1p-box-crm', statusId:'m1p-status-crm', onChange:d=>{ M1P.crm=d; ready(); }});
+  document.getElementById('m1p-generate').addEventListener('click', function(){
+    const btn=this, t=btn.textContent; btn.disabled=true; btn.textContent='Checking…';
+    setTimeout(()=>{ Promise.resolve(M1P.generate()).catch(e=>{ console.error(e); Utils.toast('Could not run the check: '+e.message); }).finally(()=>{ btn.disabled=false; btn.textContent=t; }); }, 20);
+  });
+});
+</script>
+
+<script>
+/* ============================================================
    MODULE 2 — NEW & NOT CONNECTED / SALES FOLLOW-UP CONTROL
    ============================================================ */
 const M2 = { qt:null, lsq:null };
@@ -3090,6 +3352,7 @@ M2.generate = async function(){
   }
 
   M2._allRows = finalAllRows;
+  try{ Utils.learnProjectsFromCrm(finalAllRows); }catch(e){ console.warn('project list update failed', e); }
   M2.buildReport(finalLeads, excludeStats.count, nonPaidExcluded, costCentreExcluded);
 };
 
@@ -4124,6 +4387,9 @@ M3.matchProject = function(agencyProjectName, crmProjectTotals){
 };
 
 M3.generate = async function(){
+  // This module is now Lead Count only (agency comparison removed from the UI):
+  // always show the CRM's own lead count.
+  return M3.generateCrmOnly();
   // No agency file at all — just the CRM's own data (one or both CRMs, each
   // mapped separately since 4QT and LeadSquared have different column layouts),
   // no gap comparison (there's nothing to compare against without an agency side).
@@ -5238,7 +5504,7 @@ M4.renderFields = function(){
     const row = document.createElement('div');
     row.className = 't-row';
     row.innerHTML = `<input type="text" value="${Utils.escapeHtml(member.name||'')}" data-idx="${i}" data-f="name" placeholder="Member name" style="flex:1;">
-      <input type="text" value="${Utils.escapeHtml(member.email||'')}" data-idx="${i}" data-f="email" placeholder="Email (for LeadSquared)" style="flex:1;">
+      <input type="text" value="${Utils.escapeHtml(member.email||'')}" data-idx="${i}" data-f="email" placeholder="Email (optional)" style="flex:1;">
       <button class="btn btn-sm" data-remove="${i}" title="Remove">✕</button>`;
     teamEl.appendChild(row);
   });
@@ -5421,6 +5687,253 @@ M4.renderMail = function(){
     }
   }
 };
+
+/* =====================================================================
+   Searchable dropdowns for Project / Source / Sales Head + Project Master
+   ---------------------------------------------------------------------
+   Project names change over time, so the project list is a *living* list:
+     • learned automatically from every 4QT file loaded in "New & Not Connected"
+       (with the branch owner + region seen for that project),
+     • remembered from every mapping mail you copy / open in Gmail
+       (with the Sales Head + Source you used),
+     • editable: rename (old name kept as an alias so searching it still works),
+       archive projects that are no longer live, or delete.
+   Typing a name that isn't in the list is always allowed ("Use … as a new
+   project"), with a warning if it looks like an existing project.
+   ===================================================================== */
+Utils.todayISO = function(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+Utils.projectMaster = function(){
+  if(!Array.isArray(Utils.Settings.projectMaster)) Utils.Settings.projectMaster = [];
+  return Utils.Settings.projectMaster;
+};
+Utils.findProject = function(name){
+  const k = Utils.normLoose(name); if(!k) return null;
+  return Utils.projectMaster().find(p=> Utils.normLoose(p.name)===k || (p.aliases||[]).some(a=>Utils.normLoose(a)===k)) || null;
+};
+Utils.similarProjects = function(name, limit){
+  const k = Utils.normLoose(name); if(!k) return [];
+  return Utils.projectMaster()
+    .map(p=>({p, score: Math.max(Utils.similarity(k, p.name), ...(p.aliases||[]).map(a=>Utils.similarity(k,a)))}))
+    .filter(x=>x.score >= 0.6 && Utils.normLoose(x.p.name)!==k)
+    .sort((a,b)=>b.score-a.score).slice(0, limit||3).map(x=>x.p);
+};
+Utils.learnProjectsFromCrm = function(rows){
+  if(!rows || !rows.length) return 0;
+  const today = Utils.todayISO(); const groups = {};
+  rows.forEach(r=>{
+    const name = String(r.project||'').trim(); if(!name) return;
+    const g = groups[name] || (groups[name] = {count:0, owners:{}, regions:{}, sources:{}});
+    g.count++;
+    if(r.areaCostCentre) g.owners[r.areaCostCentre]=(g.owners[r.areaCostCentre]||0)+1;
+    if(r.areaRegion && !/unknown/i.test(r.areaRegion)) g.regions[r.areaRegion]=(g.regions[r.areaRegion]||0)+1;
+  });
+  const top = o=>{ const e=Object.entries(o).sort((a,b)=>b[1]-a[1]); return e.length?e[0][0]:''; };
+  let added = 0;
+  Object.entries(groups).forEach(([name,g])=>{
+    let p = Utils.findProject(name);
+    if(!p){ p = {name, aliases:[], salesHead:'', source:'', crmOwner:'', region:'', lastSeenCrm:'', lastUsedMail:'', crmLeads:0, archived:false}; Utils.projectMaster().push(p); added++; }
+    p.lastSeenCrm = today; p.crmLeads = g.count;
+    p.crmOwner = top(g.owners) || p.crmOwner; p.region = top(g.regions) || p.region;
+    if(p.archived && p.autoArchived) { p.archived = false; p.autoArchived = false; }
+  });
+  Utils.saveSettings();
+  return added;
+};
+Utils.rememberMailProject = function(project, salesHead, source){
+  const name = String(project||'').trim(); if(!name) return;
+  let p = Utils.findProject(name);
+  if(!p){ p = {name, aliases:[], salesHead:'', source:'', crmOwner:'', region:'', lastSeenCrm:'', lastUsedMail:'', crmLeads:0, archived:false}; Utils.projectMaster().push(p); }
+  if(String(salesHead||'').trim()) p.salesHead = String(salesHead).trim();
+  if(String(source||'').trim()) p.source = String(source).trim();
+  p.lastUsedMail = Utils.todayISO(); p.archived = false;
+  Utils.saveSettings();
+};
+Utils._daysSince = function(iso){ if(!iso) return 9999; const d=new Date(iso+'T00:00:00'); return Math.floor((Date.now()-d.getTime())/86400000); };
+
+/* ---------- Generic searchable dropdown ----------
+   opts.getOptions() → [{value, label, hint, group, terms}]
+   opts.allowNew / opts.newLabel(text) → offer "use what I typed"            */
+Utils.Combo = function(input, opts){
+  const field = input.parentElement; field.classList.add('combo');
+  input.setAttribute('autocomplete','off'); input.readOnly = true; input.classList.add('combo-input');
+  input.placeholder = opts.placeholder || 'Click to choose or search…';
+  const caret = document.createElement('span'); caret.className='combo-caret'; caret.textContent='▾'; field.appendChild(caret);
+  const clear = document.createElement('button'); clear.type='button'; clear.className='combo-clear'; clear.title='Clear'; clear.textContent='✕'; field.appendChild(clear);
+  const panel = document.createElement('div'); panel.className='combo-panel'; panel.hidden = true;
+  panel.innerHTML = `<input type="text" class="combo-search" placeholder="${Utils.escapeHtml(opts.searchPlaceholder||'Search…')}"><div class="combo-list"></div>`;
+  field.appendChild(panel);
+  const search = panel.querySelector('.combo-search'), list = panel.querySelector('.combo-list');
+  let items = [], active = -1;
+  const setValue = v=>{ input.value = v; input.dispatchEvent(new Event('input', {bubbles:true})); if(opts.onPick) opts.onPick(v); syncClear(); };
+  const syncClear = ()=>{ clear.style.display = input.value ? '' : 'none'; };
+  const render = ()=>{
+    const q = Utils.normLoose(search.value); const qt = q ? q.split(' ') : [];
+    let opt = opts.getOptions(search.value);
+    if(qt.length) opt = opt.filter(o=>{ const hay = Utils.normLoose([o.label,o.value,o.hint,(o.terms||[]).join(' ')].join(' ')); return qt.every(t=>hay.indexOf(t)>=0); })
+                         .sort((a,b)=> (Utils.normLoose(b.label).startsWith(q)?1:0) - (Utils.normLoose(a.label).startsWith(q)?1:0));
+    else opt = opt.filter(o=>!o.hideUntilSearch);
+    items = opt.slice(0, 300);
+    const typed = search.value.trim();
+    const exact = typed && opt.some(o=>Utils.normLoose(o.value)===q);
+    let html = '', lastGroup = null;
+    items.forEach((o,i)=>{
+      if(o.group && o.group!==lastGroup){ html += `<div class="combo-group">${Utils.escapeHtml(o.group)}</div>`; lastGroup = o.group; }
+      html += `<div class="combo-opt" data-i="${i}"><span>${Utils.escapeHtml(o.label)}</span>${o.hint?`<small>${Utils.escapeHtml(o.hint)}</small>`:''}</div>`;
+    });
+    if(opts.allowNew && typed && !exact){
+      items.push({value:typed, label:typed, isNew:true});
+      html += `<div class="combo-opt combo-new" data-i="${items.length-1}">${Utils.escapeHtml(opts.newLabel ? opts.newLabel(typed) : '+ Use "'+typed+'"')}</div>`;
+    }
+    if(!items.length) html = `<div class="combo-empty">No match${opts.allowNew?'':' — check the spelling'}</div>`;
+    list.innerHTML = html; active = items.length ? 0 : -1; highlight();
+    list.querySelectorAll('.combo-opt').forEach(el=> el.addEventListener('mousedown', e=>{ e.preventDefault(); pick(+el.dataset.i); }));
+  };
+  const highlight = ()=>{ list.querySelectorAll('.combo-opt').forEach(el=> el.classList.toggle('active', +el.dataset.i===active)); const a=list.querySelector('.combo-opt.active'); if(a) a.scrollIntoView({block:'nearest'}); };
+  const pick = i=>{ const o = items[i]; if(!o) return; close(); setValue(o.value); };
+  const open = ()=>{ if(!panel.hidden) return; document.querySelectorAll('.combo-panel').forEach(p=>{ if(p!==panel) p.hidden = true; }); panel.hidden = false; search.value=''; render(); search.focus(); };
+  const close = ()=>{ panel.hidden = true; };
+  input.addEventListener('click', open); caret.addEventListener('click', open);
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key==='ArrowDown'||e.key===' '){ e.preventDefault(); open(); } });
+  clear.addEventListener('click', ()=>{ setValue(''); });
+  search.addEventListener('input', render);
+  search.addEventListener('keydown', e=>{
+    if(e.key==='ArrowDown'){ e.preventDefault(); if(items.length){ active=Math.min(items.length-1,active+1); highlight(); } }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); if(items.length){ active=Math.max(0,active-1); highlight(); } }
+    else if(e.key==='Enter'){ e.preventDefault(); if(active>=0) pick(active); }
+    else if(e.key==='Escape'){ close(); input.focus(); }
+  });
+  document.addEventListener('mousedown', e=>{ if(!field.contains(e.target)) close(); });
+  syncClear();
+  return {refresh: syncClear, open};
+};
+
+/* ---------- Option sources ---------- */
+M4.sourceOptions = function(){
+  // Mapping is done on the CRM *Sub Source* (the raw value in 4QT's "Source"
+  // column, e.g. "Digital Marketing XD", "META-MV", "AJN", "GTPL"), so the list
+  // shows each sub source; the parent source (DMXD, MV, Aajneeti…) and category
+  // are shown underneath and are searchable too.
+  const seenCount = {};
+  (M2._allRows||[]).forEach(r=>{ const s = String(r.subSource||'').trim(); if(s && s!=='(not mapped)') seenCount[Utils.normLoose(s)] = (seenCount[Utils.normLoose(s)]||0)+1; });
+  const out = [], have = new Set();
+  (Utils.Settings.sourceMaster||[]).forEach(r=>{
+    const raw = String(r.raw||'').trim(); if(!raw) return;
+    const k = Utils.normLoose(raw); if(have.has(k)) return; have.add(k);
+    const n = seenCount[k];
+    out.push({value:raw, label:raw, group:'Sub sources (Source Master)', terms:[r.canonical, r.category],
+      hint:['Source: '+(r.canonical||raw), r.category, n? n+' leads in last CRM file':''].filter(Boolean).join(' · ')});
+  });
+  out.sort((a,b)=>a.label.localeCompare(b.label));
+  Object.keys(seenCount).forEach(k=>{
+    if(have.has(k)) return;
+    const row = (M2._allRows||[]).find(r=>Utils.normLoose(r.subSource)===k);
+    const raw = row ? String(row.subSource).trim() : k;
+    out.push({value:raw, label:raw, hint:seenCount[k]+' leads in last CRM file', group:'In CRM, not in Source Master'});
+  });
+  return out;
+};
+M4.salesHeadOptions = function(){
+  const people = {};
+  const add = (name, role, region)=>{ name = String(name||'').trim(); if(!name) return; const k = Utils.normLoose(name);
+    const p = people[k] || (people[k] = {name, roles:new Set(), regions:new Set()}); p.roles.add(role); if(region) p.regions.add(region); };
+  (Utils.Settings.locationMaster||[]).forEach(l=>{ (l.salesHead||[]).forEach(n=>add(n,'Sales Head',l.region)); (l.costCentre||[]).forEach(n=>add(n,'Cost Centre',l.region)); });
+  Utils.projectMaster().forEach(p=>{ if(p.salesHead) add(p.salesHead,'Used in mails',''); });
+  return Object.values(people).sort((a,b)=>a.name.localeCompare(b.name)).map(p=>({value:p.name, label:p.name,
+    hint:[Array.from(p.roles).join(' / '), Array.from(p.regions).join(', ')].filter(Boolean).join(' · '), terms:Array.from(p.regions)}));
+};
+M4.projectOptions = function(){
+  const recent = [], older = [], archived = [];
+  Utils.projectMaster().forEach(p=>{
+    const days = Math.min(Utils._daysSince(p.lastSeenCrm), Utils._daysSince(p.lastUsedMail));
+    const bits = [];
+    if(p.salesHead) bits.push('→ '+p.salesHead); else if(p.crmOwner) bits.push('CRM: '+p.crmOwner);
+    if(p.region) bits.push(p.region);
+    if(p.aliases && p.aliases.length) bits.push('was: '+p.aliases.join(', '));
+    const o = {value:p.name, label:p.name, hint:bits.join(' · '), terms:(p.aliases||[]).concat([p.salesHead,p.crmOwner,p.region,p.source])};
+    if(p.archived){ o.group='Archived (shown only when searching)'; o.hideUntilSearch = true; archived.push(o); }
+    else if(days<=60){ o.group='Active projects'; recent.push(o); }
+    else { o.group='Not seen in the last 60 days'; older.push(o); }
+  });
+  const byName = (a,b)=>a.label.localeCompare(b.label);
+  return recent.sort(byName).concat(older.sort(byName), archived.sort(byName));
+};
+
+/* Hint under the Project field: who it mapped to last time, or a "did you mean" warning */
+M4.updateProjectHint = function(){
+  const el = document.getElementById('m4-project-hint'); if(!el) return;
+  const name = (document.getElementById('m4-project').value||'').trim();
+  if(!name){ el.innerHTML = ''; return; }
+  const p = Utils.findProject(name);
+  if(p){
+    const bits = [];
+    if(p.salesHead) bits.push('Last mapped to <b>'+Utils.escapeHtml(p.salesHead)+'</b>'+(p.source?' ('+Utils.escapeHtml(p.source)+')':'')+(p.lastUsedMail?' on '+p.lastUsedMail:''));
+    if(p.crmOwner) bits.push('In CRM under '+Utils.escapeHtml(p.crmOwner)+(p.region?' · '+Utils.escapeHtml(p.region):'')+(p.lastSeenCrm?' (seen '+p.lastSeenCrm+')':''));
+    el.className = 'combo-hint'; el.innerHTML = bits.join('<br>') || 'In your project list.';
+  } else {
+    const sim = Utils.similarProjects(name, 3);
+    el.className = 'combo-hint warn';
+    el.innerHTML = 'New project — it will be saved to your project list when you copy the mail or open it in Gmail.' +
+      (sim.length ? '<br>Looks similar to: ' + sim.map(p=>`<a href="#" data-sim="${Utils.escapeHtml(p.name)}">${Utils.escapeHtml(p.name)}</a>`).join(', ') + ' — pick it if it is the same project.' : '');
+    el.querySelectorAll('a[data-sim]').forEach(a=> a.addEventListener('click', e=>{ e.preventDefault(); M4._pickProject(a.dataset.sim); }));
+  }
+};
+M4._pickProject = function(name){
+  const inp = document.getElementById('m4-project');
+  inp.value = name; inp.dispatchEvent(new Event('input', {bubbles:true})); M4._afterProjectPick(name);
+};
+/* Picking a known project fills Sales Head / Source if they're still empty */
+M4._afterProjectPick = function(name){
+  const p = Utils.findProject(name);
+  if(p){
+    const head = document.getElementById('m4-head'), src = document.getElementById('m4-source');
+    if(!head.value.trim() && (p.salesHead||p.crmOwner)){ head.value = p.salesHead || p.crmOwner; head.dispatchEvent(new Event('input',{bubbles:true})); }
+    if(!src.value.trim() && p.source){ src.value = p.source; src.dispatchEvent(new Event('input',{bubbles:true})); }
+  }
+  M4._combos && Object.values(M4._combos).forEach(c=>c.refresh());
+  M4.updateProjectHint();
+};
+
+/* ---------- Project list manager ---------- */
+M4.renderProjectManager = function(){
+  const wrap = document.getElementById('m4-pm-body'); if(!wrap) return;
+  const list = Utils.projectMaster().slice().sort((a,b)=> (a.archived-b.archived) || a.name.localeCompare(b.name));
+  const q = Utils.normLoose((document.getElementById('m4-pm-search')||{}).value||'');
+  const rows = list.filter(p=> !q || Utils.normLoose([p.name,(p.aliases||[]).join(' '),p.salesHead,p.crmOwner,p.region].join(' ')).indexOf(q)>=0);
+  document.getElementById('m4-pm-count').textContent = `${list.length} projects`;
+  wrap.innerHTML = rows.length ? `<table class="attach-table"><tr><th>Project</th><th>Also known as</th><th>Sales Head (last mail)</th><th>Source</th><th>CRM owner · region</th><th>Last seen in CRM</th><th>Last mail</th><th></th></tr>` +
+    rows.map(p=>{ const i = Utils.projectMaster().indexOf(p); return `<tr style="${p.archived?'opacity:.55':''}">
+      <td>${Utils.escapeHtml(p.name)}</td><td>${Utils.escapeHtml((p.aliases||[]).join(', '))}</td><td>${Utils.escapeHtml(p.salesHead||'')}</td><td>${Utils.escapeHtml(p.source||'')}</td>
+      <td>${Utils.escapeHtml([p.crmOwner,p.region].filter(Boolean).join(' · '))}</td><td>${p.lastSeenCrm||'—'}</td><td>${p.lastUsedMail||'—'}</td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" data-pm-rename="${i}">Rename</button> <button class="btn btn-sm" data-pm-arch="${i}">${p.archived?'Restore':'Archive'}</button> <button class="btn btn-sm" data-pm-del="${i}">Delete</button></td></tr>`; }).join('') + `</table>`
+    : `<div class="empty-state">No projects yet. Load a 4QT file in "New & Not Connected" to fill this list automatically, or add one above.</div>`;
+  wrap.querySelectorAll('[data-pm-rename]').forEach(b=> b.addEventListener('click', ()=>{
+    const p = Utils.projectMaster()[+b.dataset.pmRename]; const nn = window.prompt('New name for "'+p.name+'" (the old name is kept as an alias so it can still be found):', p.name);
+    if(!nn || !nn.trim() || nn.trim()===p.name) return;
+    const clash = Utils.findProject(nn.trim()); if(clash && clash!==p){ alert('"'+nn.trim()+'" already exists in the list.'); return; }
+    p.aliases = Array.from(new Set((p.aliases||[]).concat([p.name]))).filter(a=>Utils.normLoose(a)!==Utils.normLoose(nn)); p.name = nn.trim();
+    Utils.saveSettings(); M4.renderProjectManager();
+  }));
+  wrap.querySelectorAll('[data-pm-arch]').forEach(b=> b.addEventListener('click', ()=>{ const p = Utils.projectMaster()[+b.dataset.pmArch]; p.archived = !p.archived; p.autoArchived = false; Utils.saveSettings(); M4.renderProjectManager(); }));
+  wrap.querySelectorAll('[data-pm-del]').forEach(b=> b.addEventListener('click', ()=>{ const p = Utils.projectMaster()[+b.dataset.pmDel]; if(confirm('Delete "'+p.name+'" from the project list?')){ Utils.projectMaster().splice(+b.dataset.pmDel,1); Utils.saveSettings(); M4.renderProjectManager(); } }));
+};
+
+document.addEventListener('DOMContentLoaded', function(){
+  const pIn = document.getElementById('m4-project'), sIn = document.getElementById('m4-source'), hIn = document.getElementById('m4-head');
+  if(!pIn || !sIn || !hIn) return;
+  const hint = document.createElement('div'); hint.id = 'm4-project-hint'; pIn.parentElement.insertAdjacentElement('afterend', hint);
+  M4._combos = {
+    project: Utils.Combo(pIn, {getOptions:M4.projectOptions, allowNew:true, searchPlaceholder:'Search project, old name, sales head or city…', placeholder:'Click to choose a project…', newLabel:t=>'+ Use "'+t+'" as a new project', onPick:v=>M4._afterProjectPick(v)}),
+    source:  Utils.Combo(sIn, {getOptions:M4.sourceOptions, allowNew:true, searchPlaceholder:'Search sub source (e.g. META-MV, Digital Marketing XD, AJN)…', placeholder:'Click to choose a sub source…', newLabel:t=>'+ Use "'+t+'"'}),
+    head:    Utils.Combo(hIn, {getOptions:M4.salesHeadOptions, allowNew:true, searchPlaceholder:'Search name or city…', placeholder:'Click to choose the Sales Head…', newLabel:t=>'+ Use "'+t+'"'})
+  };
+  pIn.addEventListener('input', M4.updateProjectHint);
+  // remember the project whenever the mail actually leaves the dashboard
+  ['m4-copy-mail','m4-open-gmail','m4-copy-subject'].forEach(id=>{ const b = document.getElementById(id); if(b) b.addEventListener('click', ()=>{ Utils.rememberMailProject(pIn.value, hIn.value, sIn.value); M4.updateProjectHint(); M4.renderProjectManager(); }); });
+  const ps = document.getElementById('m4-pm-search'); if(ps) ps.addEventListener('input', M4.renderProjectManager);
+  const pa = document.getElementById('m4-pm-add'); if(pa) pa.addEventListener('click', ()=>{ const v = window.prompt('Project name (BPL format, e.g. "Hero Homes Noida"):'); if(v && v.trim()){ if(Utils.findProject(v)) { alert('Already in the list.'); return; } Utils.rememberMailProject(v.trim(),'',''); Utils.projectMaster().find(p=>p.name===v.trim()).lastUsedMail=''; Utils.saveSettings(); M4.renderProjectManager(); } });
+  const det = document.getElementById('m4-pm'); if(det) det.addEventListener('toggle', M4.renderProjectManager);
+  M4.renderProjectManager();
+});
 
 </script>
 <script>
