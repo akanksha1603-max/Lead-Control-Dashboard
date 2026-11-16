@@ -522,9 +522,10 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
               <div class="f-field"><label>Report period in the mail (leave blank = taken from the lead dates)</label><input id="m2mail-period" placeholder="01st November to 15th November 2026"></div>
               <div class="f-field"><label>Regards (your name)</label><input id="m2mail-sign" placeholder="Akanksha Tyagi"></div>
             </div>
+            <div style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin-bottom:8px;flex-wrap:wrap;"><b>Send only where New is more than</b> <input type="number" id="m2mail-minnew" min="0" style="width:70px;padding:5px 7px;border:1px solid var(--line-strong);border-radius:4px;"> <span style="color:var(--text-muted)">— rows above this are ticked automatically; you can still tick / untick any row yourself.</span></div>
             <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin-bottom:8px;"><input type="checkbox" id="m2mail-perregion"> One mail per region (e.g. Santanu Ghosh gets a separate mail for his Bangalore team). Untick to send one mail per Sales Head with all regions.</label>
             <div id="m2mail-body" style="overflow-x:auto;"></div>
-            <div class="btn-row" style="margin-top:10px;"><button class="btn btn-primary" id="m2mail-sendall" type="button">Send to all Sales Heads with an email</button></div>
+            <div class="btn-row" style="margin-top:10px;"><button class="btn btn-primary" id="m2mail-sendall" type="button">Send to ticked Sales Heads</button><span id="m2mail-selcount" class="mini-note" style="align-self:center;"></span></div>
             <div id="m2mail-preview" style="margin-top:12px;"></div>
           </details>
         </div>
@@ -1523,6 +1524,7 @@ Utils.COLUMN_ALIASES = {
   subResponse:  ['Last Sub Response Type(Sales)','Last Sub Response','Sub Response','Sub Disposition','Call Status'],
   masterCostCentre: ['Cost Centre','Cost Center','Cost Centre Person','Cost Centre Person Name','Cost Center Person Name','Cost Centre (Area)','CC','Cost Centre Name','Sales Head','Mapped To','Map To','Owner Branch','Handler Branch','Branch'],
   masterStatus: ['Status','Campaign Status','Live Status'],
+  masterSource: ['Source','Sub Source','Agency Source','Media Source'],
   masterProject: ['Project Name (BPL)','Project Name','Project','BPL','Project (BPL)','Property'],
   crmProject:   ['Project','Project Name','Original Project'],
 };
@@ -3158,6 +3160,7 @@ const M1P_MASTER_FIELDS = [
   {key:'masterCostCentre', label:'Cost Centre (the person the project should be mapped to)', required:true},
   {key:'location', label:'Location (optional — shown for context)', required:false},
   {key:'masterStatus', label:'Status (optional — LIVE / PAUSED / TO BE LIVE)', required:false},
+  {key:'masterSource', label:'Source (optional — e.g. MV, AJN, GT/ND; shown next to the CRM sources)', required:false},
 ];
 const M1P_CRM_FIELDS = [
   {key:'crmProject', label:'Project (4QT "Project")', required:true},
@@ -3181,6 +3184,7 @@ M1P.personKey = function(raw){
 M1P.splitPeople = function(raw){
   return String(raw||'').split(/\s*(?:\/|,|&|\+|;|\band\b)\s*/i).map(s=>s.trim()).filter(Boolean).map(M1P.personKey).filter(p=>p.key && !p.generic);
 };
+M1P.fmtDate = function(d){ return String(d.getDate()).padStart(2,'0') + '-' + d.toLocaleString('en-GB',{month:'short'}) + '-' + d.getFullYear(); };
 M1P.samePerson = function(a, b){
   if(!a || !b) return false;
   if(a===b || Utils.similarity(a,b) >= 0.85) return true;
@@ -3218,7 +3222,8 @@ M1P.generate = async function(){
   M1P.master.rows.forEach(row=>{
     const project = String(Utils.val(row, mMap.masterProject)||'').trim(); if(!project) return;
     const k = M1P.projectKey(project); if(!k) return;
-    const m = master[k] || (master[k] = {project: String(project).replace(/\s*\([^)]*\)\s*/g,' ').trim(), people:[], region:'', statuses:new Set(), generic:false});
+    const m = master[k] || (master[k] = {project: String(project).replace(/\s*\([^)]*\)\s*/g,' ').trim(), people:[], region:'', statuses:new Set(), sources:new Set(), generic:false});
+    if(mMap.masterSource){ const src = String(Utils.val(row, mMap.masterSource)||'').trim(); if(src) m.sources.add(src); }
     const ppl = M1P.splitPeople(Utils.val(row, mMap.masterCostCentre));
     if(!ppl.length) m.generic = true;
     ppl.forEach(p=>{ if(!m.people.some(x=>x.key===p.key)) m.people.push(p); });
@@ -3245,22 +3250,28 @@ M1P.generate = async function(){
     const branchRaw = String(Utils.val(row, cMap.areaBranch)||'').trim();
     const person = M1P.personKey(branchRaw);
     if(person.key && excludedNames.some(n=> person.key===n || person.key.split(' ')[0]===n.split(' ')[0] && n.split(' ').every(w=>person.key.split(' ').indexOf(w)>=0))){ excludedLeads++; return; }
-    const g = byProject[project] || (byProject[project] = {project, total:0, ccCounts:{}, rows:[]});
+    const g = byProject[project] || (byProject[project] = {project, total:0, ccCounts:{}, srcCounts:{}, rows:[]});
     g.total++; const label = person.name || '(blank)';
     g.ccCounts[label] = (g.ccCounts[label]||0)+1;
-    g.rows.push({row, person, branchRaw});
+    const src = cMap.source ? (String(Utils.val(row, cMap.source)||'').trim() || '(blank)') : '';
+    if(src) g.srcCounts[src] = (g.srcCounts[src]||0)+1;
+    const dt = cMap.date ? Utils.toDateSafe(Utils.val(row, cMap.date)) : null;
+    if(dt && !isNaN(dt) && (!g.lastDate || dt > g.lastDate)) g.lastDate = dt;
+    g.rows.push({row, person, branchRaw, src, dt});
   });
 
   const projectRows = []; const seenMaster = new Set();
   Object.values(byProject).forEach(g=>{
     const fm = findMaster(g.project); const m = fm.m;
-    let right = 0, wrong = 0;
+    let right = 0, wrong = 0, lastWrong = null; const wrongBySrc = {};
     if(m){
       seenMaster.add(M1P.projectKey(m.project));
       g.rows.forEach(x=>{
         const ok = x.person.key && m.people.some(p=>M1P.samePerson(p.key, x.person.key));
         if(ok) right++; else {
           wrong++;
+          if(x.dt && !isNaN(x.dt) && (!lastWrong || x.dt > lastWrong)) lastWrong = x.dt;
+          const wk = (x.src || '(no source)') + ' → ' + (x.person.name || '(blank)'); wrongBySrc[wk] = (wrongBySrc[wk]||0)+1;
           wrongLeads.push({
             leadId: cMap.leadId ? Utils.val(x.row, cMap.leadId) : '', leadName: cMap.leadName ? Utils.val(x.row, cMap.leadName) : '',
             project: g.project, source: cMap.source ? Utils.val(x.row, cMap.source) : '',
@@ -3277,6 +3288,11 @@ M1P.generate = async function(){
       ccInMaster: m ? (m.people.map(p=>p.name).join(' / ') || '(not assigned in master)') : '',
       masterStatus: m ? Array.from(m.statuses).join(' / ') : '',
       ccInCrm: Object.entries(g.ccCounts).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', '),
+      lastLead: g.lastDate ? M1P.fmtDate(g.lastDate) : '', lastLeadSort: g.lastDate ? g.lastDate.getTime() : 0,
+      lastWrongLead: lastWrong ? M1P.fmtDate(lastWrong) : '',
+      srcInCrm: Object.entries(g.srcCounts).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', '),
+      srcInMaster: m ? Array.from(m.sources).join(', ') : '',
+      wrongDetail: Object.entries(wrongBySrc).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(', '),
       total: g.total, rightCount: m ? right : '', wrongCount: m ? wrong : '', result,
       note: !m ? (fm.closest ? 'Closest name in master: '+fm.closest : 'Add this project to the master sheet')
                 : (fm.how==='spelling' ? 'Name differs from master ("'+m.project+'") — matched by spelling' : '')
@@ -3285,7 +3301,7 @@ M1P.generate = async function(){
   // master projects with no leads in this CRM file
   Object.values(master).forEach(m=>{
     if(seenMaster.has(M1P.projectKey(m.project))) return;
-    projectRows.push({project:'', masterProject:m.project, region:m.region, masterStatus:Array.from(m.statuses).join(' / '), ccInMaster:m.people.map(p=>p.name).join(' / ') || '(not assigned in master)', ccInCrm:'', total:0, rightCount:'', wrongCount:'', result:'NO LEADS IN CRM', note:'No leads for this project in the uploaded 4QT file (or the project name differs in CRM)'});
+    projectRows.push({lastLead:'', lastWrongLead:'', srcInCrm:'', wrongDetail:'', srcInMaster:Array.from(m.sources).join(', '), project:'', masterProject:m.project, region:m.region, masterStatus:Array.from(m.statuses).join(' / '), ccInMaster:m.people.map(p=>p.name).join(' / ') || '(not assigned in master)', ccInCrm:'', total:0, rightCount:'', wrongCount:'', result:'NO LEADS IN CRM', note:'No leads for this project in the uploaded 4QT file (or the project name differs in CRM)'});
   });
   const order = {'WRONG MAPPING':0,'PARTLY WRONG':1,'NOT IN MASTER SHEET':2,'UNABLE TO VALIDATE':3,'CORRECT':4,'NO LEADS IN CRM':5};
   projectRows.sort((a,b)=> (order[a.result]-order[b.result]) || (b.wrongCount||0)-(a.wrongCount||0) || (b.total-a.total));
@@ -3306,8 +3322,10 @@ M1P.generate = async function(){
   M1P.table = new DataTable({prefix:'m1p', rows:projectRows, filename:'project_cost_centre_check.xlsx',
     columns:[
       {key:'project', label:'Project in CRM', wrap:true}, {key:'masterProject', label:'Project in Master Sheet', wrap:true},
-      {key:'masterStatus', label:'Master Status'}, {key:'ccInMaster', label:'Cost Centre (Master)'}, {key:'ccInCrm', label:'Cost Centre in CRM (leads)', wrap:true},
-      {key:'total', label:'Leads'}, {key:'rightCount', label:'Right CC'}, {key:'wrongCount', label:'Wrong CC'},
+      {key:'masterStatus', label:'Master Status'}, {key:'ccInMaster', label:'Cost Centre (Master)'}, {key:'srcInMaster', label:'Source (Master)', wrap:true},
+      {key:'ccInCrm', label:'Cost Centre in CRM (leads)', wrap:true}, {key:'srcInCrm', label:'Source in CRM (leads)', wrap:true},
+      {key:'total', label:'Leads'}, {key:'lastLead', label:'Last Lead Date'}, {key:'rightCount', label:'Right CC'}, {key:'wrongCount', label:'Wrong CC'},
+      {key:'wrongDetail', label:'Wrong CC — by Source', wrap:true}, {key:'lastWrongLead', label:'Last Wrong-CC Lead'},
       {key:'result', label:'Result', pill:true}, {key:'note', label:'Note', wrap:true}],
     filterDefs:[{key:'result', label:'Result'}, {key:'masterStatus', label:'Master Status'}, {key:'ccInMaster', label:'Cost Centre (Master)'}, {key:'region', label:'Location'}]
   });
@@ -4041,7 +4059,7 @@ M2.buildReport = function(leads, excludedCount, nonPaidExcluded, costCentreExclu
   M2._costCentreExcluded = costCentreExcluded || 0;
   M2.renderDispositionCheck(leads);
   M2._reportLeads = leads;
-  try{ M2M.render(); }catch(e){ console.warn('report mail panel', e); }
+  try{ M2M.conf().manual = {}; M2M.render(); }catch(e){ console.warn('report mail panel', e); }
 
   // "New" and "Not Connected" as two separate columns instead of one combined
   // Status column — each lead only ever fills in ONE of these (a lead is either
@@ -6366,6 +6384,8 @@ M2M.conf = function(){
   if(c.defaultCc === undefined || c.defaultCc === '') c.defaultCc = 'devender.makkar@investoxpert.com, vishal.raheja@investoxpert.com, performancemarketing@investoxpert.com, campaigns@investoxpert.com';
   if(c.signature === undefined) c.signature = 'Akanksha Tyagi';
   if(c.perRegion === undefined) c.perRegion = true;
+  if(c.minNew === undefined) c.minNew = 10;
+  if(!c.manual) c.manual = {};
   if(!c.heads) c.heads = {};
   return c;
 };
@@ -6471,6 +6491,13 @@ M2M.gmail = function(grp){
               '&su=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(m.text), '_blank');
   Utils.toast('Gmail draft opened — attach the Excel that was just downloaded (' + x.fname + ')');
 };
+M2M.updateCount = function(){
+  const rows = Array.from(document.querySelectorAll('#m2mail-body tr[data-i]'));
+  const on = rows.filter(tr=>tr.querySelector('.m2m-on').checked);
+  const noMail = on.filter(tr=>!tr.querySelector('.m2m-to').value.trim()).length;
+  const el = document.getElementById('m2mail-selcount');
+  if(el) el.textContent = `${on.length} of ${rows.length} mails ticked` + (noMail ? ` — ${noMail} ticked row(s) have no email and will be skipped` : '');
+};
 M2M.render = function(){
   if(!document.getElementById('m2mail-card')) return;
   const c = M2M.conf(), groups = M2M.groups(), p = M2M.period();
@@ -6478,17 +6505,21 @@ M2M.render = function(){
   document.getElementById('m2mail-cc').value = c.defaultCc || '';
   document.getElementById('m2mail-sign').value = c.signature || '';
   document.getElementById('m2mail-perregion').checked = !!c.perRegion;
+  document.getElementById('m2mail-minnew').value = c.minNew;
   const ps = document.getElementById('m2mail-period'); ps.value = c.periodLong || ''; ps.placeholder = p.long || 'e.g. 01st November to 15th November 2026';
   const body = document.getElementById('m2mail-body');
   if(!groups.length){ body.innerHTML = '<div class="empty-state">No New / Not Connected leads in this report.</div>'; return; }
   const esc = Utils.escapeHtml, inp = 'padding:5px 7px;border:1px solid var(--line-strong);border-radius:4px;';
-  body.innerHTML = `<table class="attach-table"><tr><th>Sales Head</th><th>Region</th><th>New</th><th>Not Connected</th><th>To (email)</th><th>"Dear …"</th><th>Extra CC</th><th></th><th></th></tr>` +
-    groups.map((g,i)=>{ const h = M2M.headCfg(g.head); return `<tr data-i="${i}">
+  const min = +c.minNew || 0;
+  const isOn = g=> (c.manual[g.key] !== undefined) ? c.manual[g.key] : g.newC > min;
+  body.innerHTML = `<table class="attach-table"><tr><th>Send?</th><th>Sales Head</th><th>Region</th><th>New</th><th>Not Connected</th><th>To (email)</th><th>"Dear …"</th><th>Extra CC</th><th></th><th></th></tr>` +
+    groups.map((g,i)=>{ const h = M2M.headCfg(g.head); const on = isOn(g); return `<tr data-i="${i}" style="${on?'':'opacity:.5'}">
+      <td style="text-align:center"><input type="checkbox" class="m2m-on" ${on?'checked':''} title="${g.newC > min ? 'New is above '+min : 'New is '+g.newC+' (not above '+min+')'}"></td>
       <td><b>${esc(g.head)}</b></td><td>${esc(g.region || Array.from(g.regions).join(', '))}</td><td>${g.newC}</td><td>${g.ncC}</td>
       <td><input class="m2m-to" data-head="${esc(g.head)}" value="${esc(h.to)}" placeholder="name@investoxpert.com" style="min-width:200px;${inp}"></td>
       <td><input class="m2m-greet" data-head="${esc(g.head)}" value="${esc(h.greet)}" style="min-width:120px;${inp}"></td>
       <td><input class="m2m-cc" data-head="${esc(g.head)}" value="${esc(h.cc)}" placeholder="optional" style="min-width:140px;${inp}"></td>
-      <td style="white-space:nowrap"><button class="btn btn-sm btn-primary m2m-send" type="button">Send</button> <button class="btn btn-sm m2m-gmail" type="button">Gmail</button> <button class="btn btn-sm m2m-preview" type="button">Preview</button></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm btn-primary m2m-send" type="button">Send</button> <button class="btn btn-sm m2m-gmail" type="button">Gmail</button> <button class="btn btn-sm m2m-preview" type="button">Preview</button> <button class="btn btn-sm m2m-xlsx" type="button" title="Download the Excel that will be attached">⬇ Excel</button></td>
       <td class="m2m-status" style="font-size:11.5px;color:var(--text-muted);min-width:90px;"></td></tr>`; }).join('') + '</table>';
   const save = (el, key)=>{ const head = el.dataset.head; c.heads[head] = Object.assign({}, M2M.headCfg(head), c.heads[head]||{}); c.heads[head][key] = el.value.trim(); Utils.saveSettings();
     body.querySelectorAll(`.m2m-${key==='greet'?'greet':key}[data-head="${CSS.escape(head)}"]`).forEach(o=>{ if(o!==el) o.value = el.value; }); };
@@ -6504,6 +6535,8 @@ M2M.render = function(){
       b.disabled = false;
     });
     tr.querySelector('.m2m-gmail').addEventListener('click', ()=> M2M.gmail(g));
+    tr.querySelector('.m2m-xlsx').addEventListener('click', ()=>{ const x = M2M.workbook(g); XLSX.writeFile(x.wb, x.fname); });
+    tr.querySelector('.m2m-on').addEventListener('change', ev=>{ c.manual[g.key] = ev.target.checked; Utils.saveSettings(); tr.style.opacity = ev.target.checked ? '' : '.5'; M2M.updateCount(); });
     tr.querySelector('.m2m-preview').addEventListener('click', ()=>{
       const m = M2M.build(g), r = M2M.recipients(g.head), x = M2M.workbook(g);
       const sheet = XLSX.utils.sheet_to_json(x.wb.Sheets.Report, {header:1});
@@ -6511,19 +6544,22 @@ M2M.render = function(){
       document.getElementById('m2mail-preview').scrollIntoView({behavior:'smooth', block:'nearest'});
     });
   });
+  body.querySelectorAll('.m2m-to').forEach(el=> el.addEventListener('input', M2M.updateCount));
+  M2M.updateCount();
 };
 document.addEventListener('DOMContentLoaded', function(){
   const u = document.getElementById('m2mail-url'); if(!u) return;
   const bind = (id, key, fn)=>{ const el = document.getElementById(id); el.addEventListener('change', ()=>{ M2M.conf()[key] = fn ? fn(el) : el.value.trim(); Utils.saveSettings(); if(id==='m2mail-perregion') M2M.render(); }); };
   bind('m2mail-url','senderUrl'); bind('m2mail-cc','defaultCc'); bind('m2mail-sign','signature'); bind('m2mail-period','periodLong');
   bind('m2mail-perregion','perRegion', el=>el.checked);
+  document.getElementById('m2mail-minnew').addEventListener('change', ev=>{ const c = M2M.conf(); c.minNew = Math.max(0, parseInt(ev.target.value,10)||0); c.manual = {}; Utils.saveSettings(); M2M.render(); });
   document.getElementById('m2mail-sendall').addEventListener('click', async ev=>{
-    const rows = Array.from(document.querySelectorAll('#m2mail-body tr[data-i]')).filter(tr=> tr.querySelector('.m2m-to').value.trim());
-    if(!rows.length){ Utils.toast('Add at least one Sales Head email first'); return; }
+    const rows = Array.from(document.querySelectorAll('#m2mail-body tr[data-i]')).filter(tr=> tr.querySelector('.m2m-on').checked && tr.querySelector('.m2m-to').value.trim());
+    if(!rows.length){ Utils.toast('No ticked row has an email address'); return; }
     if(!confirm(`Send the report to ${rows.length} Sales Head mail(s)?`)) return;
-    ev.currentTarget.disabled = true;
+    const btn = ev.currentTarget; btn.disabled = true;
     for(const tr of rows){ tr.querySelector('.m2m-send').click(); await new Promise(r=>setTimeout(r, 1500)); }
-    ev.currentTarget.disabled = false;
+    btn.disabled = false;
   });
 });
 </script>
