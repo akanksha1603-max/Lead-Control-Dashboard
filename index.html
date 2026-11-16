@@ -537,7 +537,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
           </details>
         </div>
         <div class="card" id="m2-disposition-card" style="display:none;">
-          <h2>Lead Disposition Audit <small>Pick a Lead Status, then choose to see only wrongly-dispositioned leads (remark shows contact was made — for Requirement Mismatch, the Sales remark names the lead's own project, says details were shared/sent, or shows a visit / meeting / call back planned) or every lead of that status with its reason</small></h2>
+          <h2>Lead Disposition Audit <small>Pick a Lead Status, then choose to see only wrongly-dispositioned leads (remark shows contact was made — for Requirement Mismatch, the Sales remark shows a concrete visit plan (or details sent with follow-up) and no real mismatch) or every lead of that status with its reason</small></h2>
           <div class="m2-status-bar" id="m2disp-mode-bar" role="radiogroup" aria-label="Which leads to show">
             <span class="sb-label">Show:</span>
             <span class="sb-chip on" data-mode="flagged" role="radio" aria-checked="true" tabindex="0">Only wrong disposition (remark shows contact)</span>
@@ -3817,6 +3817,40 @@ const DETAILS_SHARED_RE = /\bdetails?\s+(have\s+been\s+|has\s+been\s+|been\s+|we
    (e.g. "Sunday visit plan", "will discuss with his family than meet next weekend"). */
 const FOLLOWUP_INTENT_RE = /\b(site\s*)?visit(s|ing)?\b|\bsv\b|\bmeet(ing)?\b|\bcall\s*back\b|\bcallback\b|\bdiscuss(ing)?\s+with\b|\bwill\s+(discuss|think|plan|come|confirm|update|visit|meet)\b|\bcoming\s+(this|next|on|tomorrow|today|sunday|saturday|weekend)\b|\bplan(ning|ing)?\s+(for|to)\s+(a\s+)?(site\s+)?visit\b/i;
 const FOLLOWUP_NEG_RE = /\b(not|no|never|won'?t|wont|don'?t|dont|didn'?t|didnt|cancel(l?ed)?|denied|refused)\s+(\w+\s+){0,3}(visit|meet|coming|come|plan)\b|\bnot\s+interest|\bvisit\s+(cancel|denied)|\bvisited\b|\bvisit\s+done\b/i;
+/* ---- Wrong-disposition rules v2 (tuned on the Sales Heads' corrected lists, 16 Nov) ----
+   Requirement Mismatch is wrong only when the remark shows a concrete visit plan
+   (or "details sent … follow up") AND nothing in it points to a real mismatch
+   (budget, location, ready-to-move, plot/villa, resale, not interested…), it isn't
+   vague ("might", "may be", "will let you know"…) and it isn't about another
+   developer's project. Plain "call back" no longer counts. Not Connected / New are
+   wrong only when the remark records an actual conversation (details shared,
+   requirement, budget, BHK…). Dumped leads are never flagged. */
+const VISIT_RE = /\b(site\s*)?visit\b|\bsv\b|\b(ayega|aayega|aaega|aayenge|aaenge|ayenge|aaunga|aayegi|ayegi)\b/i;
+const VISIT_PAST_NEG_RE = /\b(not|no|never|won'?t|wont|don'?t|dont|didn'?t|didnt|cancel(l?ed)?|denied|refused)\s+(\w+\s+){0,3}(visit|come)\b|\bvisit\s+(cancel|denied|done)\b|\bvisited\b|\balready\s+(visited|seen)\b/i;
+const RM_MISMATCH_RE = /budget|price\s+is\s+high|higher\s+price|expensive|costly|ready\s*to\s*move|\brtmi?\b|possess?ion|occupied|\bplots?\b|plotted|villa|independent\s+house|resale|low\s+(density|loading|rise)|not\s+in?(te|tre)?re?sted|\bdrop\b|not\s+consider|not\s+looking|already\s+(purchase|bought|booked)|not\s+sure|want\s+near|looking\s+(in|at)\s|\bfar\b|location|handover|under\s*\d+\s*k\b|per\s*sq|requirement\s+is|other\s+project|also\s+searching|pitched|suggested/i;
+const RM_HEDGE_RE = /\bmight\b|\bmay\s*be\b|\bif\b[^.]*\bplan|let\s+(you|me)\s+know|will\s+update|after\s+\d+\s+months?|this\s+year|next\s+year|for\s+understanding|on\s+(his|her|their)\s+own|when\s+(he|she|they)\s+plans?/i;
+const DEVS = ['prestige','brigade','godrej','sobha','omaxe','tata','mahindra','provident','puravankara','purva','hero','gaur','eldeco','ace','m3m','dlf','lodha','hiranandani','krisala','shriram','kolte','assetz','embassy','birla','adarsh','sattva','casagrand','mana','ramky','skytech','northwind','smart world','tvs','urbanrise','kalpataru','shapoorji','bhartiya','srijan','dtc','salarpuria','mantri','total environment','century','vaishnavi','rohan','pride','vtp','gera'];
+const WD_DETAILS_SHARED_RE = /\bdetails?\s+(have\s+been\s+|has\s+been\s+|been\s+|were\s+|was\s+|are\s+|is\s+)?(shared|sent|send|share)\b|\b(shared|sent|send|share|sending|sharing)\s+(him\s+|her\s+|them\s+|the\s+|all\s+|project\s+|property\s+|of\s+|on\s+whatsapp\s+)*details?\b/i;
+const FOLLOWUP_RE = /\bfollow\s*-?\s*up\b/i;
+const NC_STRONG_RE = /\bdetails?\s+(shared|sent)|(shared|sent)\s+(the\s+)?details|looking\s+for|budget|\bbhk\b|sq\.?\s*ft|suggested|pitched|site\s+visit/i;
+function wdOtherDev(remark, project){ const r=remark.toLowerCase(), p=String(project||'').toLowerCase(); return DEVS.find(d=> new RegExp('\\b'+d+'\\b').test(r) && p.indexOf(d)<0) || ''; }
+M2.judgeDisposition = function(l){
+  const st = String(l.status).toLowerCase(), t = String(l.remark||'');
+  if(/dump/.test(st)) return '';
+  if(/mis\s*match/.test(st)){
+    const visit = VISIT_RE.test(t) && !VISIT_PAST_NEG_RE.test(t);
+    const detailsFollow = WD_DETAILS_SHARED_RE.test(t) && FOLLOWUP_RE.test(t);
+    if(!(visit || detailsFollow)) return '';
+    if(RM_MISMATCH_RE.test(t) || RM_HEDGE_RE.test(t)) return '';
+    if(wdOtherDev(t, l.project)) return '';
+    return visit ? 'visit planned' : 'details shared + follow up';
+  }
+  if(/not\s*connected/.test(st)){
+    return NC_STRONG_RE.test(t) ? 'conversation recorded' : '';
+  }
+  return '';
+};
+
 M2.isReqMismatchStatus = function(s){
   return /requirement\s*mis\s*match|mis\s*match|mis\s*requirement|req(uirement)?\s*mismatch/.test(Utils.normLoose(s));
 };
@@ -3882,22 +3916,14 @@ M2.renderDispositionCheck = function(leads){
     l.flagReason = '';
     if(l.statusClass === 'other') return false;
     if(showAll) return true;
-    // Requirement Mismatch (incl. "(Dump)" variants): flagged ONLY when the Sales
-    // remark names the same project the lead came for.
-    if(M2.isReqMismatchStatus(l.originalStatus)){
-      const hit = M2.remarkNamesProject(l.project, l.salesRemark);
-      const shared = DETAILS_SHARED_RE.test(l.salesRemark || '');
-      const followUp = FOLLOWUP_INTENT_RE.test(l.salesRemark || '') && !FOLLOWUP_NEG_RE.test(l.salesRemark || '');
-      const why = [];
-      if(hit) why.push('Remark names the lead\'s own project ("' + hit + '")');
-      if(shared) why.push('Remark says details were shared/sent');
-      if(followUp) why.push('Remark shows visit / meeting / call back planned');
-      l.flagReason = why.join('; ');
-      return !!(hit || shared || followUp);
+    if(l.statusClass === 'dump') return false;   // dumped leads are closed with a reason — not audited
+    const why = M2.judgeDisposition({status: l.originalStatus, remark: l.salesRemark || '', project: l.project});
+    if(why){
+      l.flagReason = why==='visit planned' ? 'Remark shows a concrete visit plan, no mismatch mentioned'
+                   : why==='details shared + follow up' ? 'Remark says details shared and follow-up pending'
+                   : 'Remark records a real conversation (details / requirement / budget)';
+      return true;
     }
-    const text = [l.remarks, l.salesRemark].join(' ');
-    if(NOT_CONNECTED_NEGATION_RE.test(text)) return false; // genuinely not connected, no matter what else the text says
-    if(CONTACT_EVIDENCE_RE.test(text)){ l.flagReason = 'Remark shows contact was made'; return true; }
     return false;
   });
 
@@ -3910,8 +3936,8 @@ M2.renderDispositionCheck = function(leads){
     const label = M2._dispMode === 'all'
       ? `All ${Utils.escapeHtml(statusText)} leads`
       : (/^(requirement mismatch[^,]*)(, requirement mismatch[^,]*)*$/i.test(statusText)
-          ? `${Utils.escapeHtml(statusText)} — but the Sales remark names the lead's own project, says details were shared/sent, or shows a visit / meeting / call back planned`
-          : `${Utils.escapeHtml(statusText)} — flagged as wrong disposition (Requirement Mismatch: remark names the lead's own project, says details were shared/sent, or shows a visit / meeting / call back planned; other statuses: remark shows contact was made)`);
+          ? `${Utils.escapeHtml(statusText)} — but the Sales remark shows a concrete visit plan (or details sent with follow-up) and no real mismatch`
+          : `${Utils.escapeHtml(statusText)} — flagged as wrong disposition (Requirement Mismatch: remark shows a concrete visit plan (or details sent with follow-up) and no real mismatch; other statuses: remark shows contact was made)`);
     document.getElementById('m2-disposition-headline').innerHTML = `
       <div class="kpi ${M2._dispMode === 'all' ? '' : 'tone-red'}"><div class="k-label">${label}</div><div class="k-value">${rows.length}</div></div>
     `;
