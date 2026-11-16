@@ -30,10 +30,10 @@
   --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 }
 *{box-sizing:border-box;}
-.field.combo{position:relative;}
-.field.combo .combo-input{cursor:pointer;padding-right:52px;background:#fff;}
-.combo-caret{position:absolute;right:10px;bottom:9px;color:var(--text-muted);cursor:pointer;font-size:12px;}
-.combo-clear{position:absolute;right:26px;bottom:7px;border:0;background:transparent;color:var(--text-faint);cursor:pointer;font-size:12px;padding:2px 4px;}
+.combo{position:relative;display:flex;flex-direction:column;}
+.combo .combo-input{cursor:pointer;padding-right:52px;background:#fff;}
+.combo-caret{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);cursor:pointer;font-size:12px;}
+.combo-clear{position:absolute;right:26px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--text-faint);cursor:pointer;font-size:12px;padding:2px 4px;}
 .combo-clear:hover{color:var(--red);}
 .combo-panel{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line-strong);border-radius:6px;box-shadow:0 8px 24px rgba(20,25,34,.14);z-index:50;}
 .combo-search{width:100%;border:0;border-bottom:1px solid var(--line);padding:9px 10px;font-size:13px;font-family:inherit;border-radius:6px 6px 0 0;outline:none;}
@@ -43,6 +43,8 @@
 .combo-opt small{color:var(--text-muted);font-size:11px;}
 .combo-opt.active,.combo-opt:hover{background:var(--accent-tint);}
 .combo-new{color:var(--accent);font-weight:600;}
+.combo-opt.selected span{color:var(--accent);font-weight:600;}
+.combo-opt.selected:hover span::after{content:'  — remove';color:var(--red);font-weight:400;font-size:11px;}
 .combo-empty{padding:10px;color:var(--text-muted);font-size:12.5px;}
 .combo-hint{font-size:11.5px;color:var(--text-muted);margin:-6px 0 10px;line-height:1.5;}
 .combo-hint.warn{color:var(--amber);}
@@ -301,6 +303,47 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
 .legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
 .req-star{color:var(--red);}
 
+
+/* ================= Responsive: laptop / tablet / phone ================= */
+.rail-menu-btn{display:none;}
+@media (max-width:1180px) and (min-width:761px){
+  .rail{width:200px;}
+  .rail-item .desc,.rail-brand .sub{display:none;}
+  .main{padding:22px 22px 50px 22px;}
+}
+@media (max-width:760px){
+  .shell{display:block;}
+  .rail{position:static;width:auto;height:auto;}
+  .rail-brand{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;}
+  .rail-brand .sub{display:none;}
+  .rail-menu-btn{display:none !important;align-items:center;gap:6px;background:rgba(255,255,255,.08);color:#EDEFEA;border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:6px 10px;font-size:12.5px;cursor:pointer;max-width:60%;}
+  .rail-menu-btn span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* every module stays visible on a phone: a 2-column grid of buttons */
+  .rail-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:8px 10px 12px 10px;overflow:visible;}
+  .rail-nav .rail-item{margin:0;padding:8px 9px;font-size:12.5px;align-items:center;}
+  .rail-nav .rail-item .desc{display:none;}
+  .rail-nav .rail-item .num{font-size:10px;}
+  .rail-foot{display:none;}
+  .main{padding:14px 12px 40px 12px;}
+  .view-head{flex-direction:column;gap:6px;}
+  .view-head h1{font-size:18px;}
+  .card{padding:14px !important;}
+  .kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+  .kpi{padding:10px 12px;}
+  .kpi .k-value{font-size:20px;}
+  .upload-grid,.mail-grid{grid-template-columns:1fr !important;}
+  .filter-bar{gap:8px;}
+  .f-field{min-width:0;flex:1 1 calc(50% - 4px);}
+  .f-field.search{flex-basis:100%;}
+  .btn-row{flex-wrap:wrap;}
+  .btn-row .btn{flex:1 1 auto;}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .attach-table{display:block;overflow-x:auto;max-width:100%;}
+  .table-foot{flex-direction:column;align-items:flex-start;gap:8px;}
+  .mail-preview{overflow-wrap:anywhere;font-size:12.5px;}
+  .t-row{flex-wrap:wrap;}
+  .t-row input{min-width:0;}
+}
 </style>
 </head>
 <body>
@@ -308,6 +351,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
   <aside class="rail">
     <div class="rail-brand">
       <span class="mark"><span class="dot"></span>Lead Control Dashboard</span>
+      <button class="rail-menu-btn" id="railMenuBtn" type="button" aria-label="Open menu">☰ <span id="railCurrent">Menu</span></button>
       <div class="sub">Performance-marketing lead verification &amp; sales-accountability console</div>
     </div>
     <nav class="rail-nav" id="railNav">
@@ -689,7 +733,7 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
         <div class="mail-grid">
           <div>
             <div class="field" id="f-project"><label>Project Name (BPL)</label><input id="m4-project"></div>
-            <div class="field" id="f-source"><label>Sub Source</label><input id="m4-source"></div>
+            <div class="field" id="f-source"><label>Sub Source <small style="font-weight:400;color:var(--text-muted)">(pick one or more)</small></label><input id="m4-source"></div>
             <div class="field" id="f-head"><label>Sales Head (Map To) <span class="req-star">*</span></label><input id="m4-head"></div>
           </div>
           <div>
@@ -1460,6 +1504,7 @@ Utils.COLUMN_ALIASES = {
   followUpCount:['Follow Up Counter','Followup Counter','No Of Follow Ups','Follow Up Count','Number Of Followups','Follow Ups','Call Attempts','Counter'],
   salesHeadBranch: ['Owner Branch'],
   areaBranch:   ['Handler Branch'],
+  subResponse:  ['Last Sub Response Type(Sales)','Last Sub Response','Sub Response','Sub Disposition','Call Status'],
   masterCostCentre: ['Cost Centre','Cost Center','Cost Centre Person','Cost Centre Person Name','Cost Center Person Name','Cost Centre (Area)','CC','Cost Centre Name','Sales Head','Mapped To','Map To','Owner Branch','Handler Branch','Branch'],
   masterStatus: ['Status','Campaign Status','Live Status'],
   masterProject: ['Project Name (BPL)','Project Name','Project','BPL','Project (BPL)','Property'],
@@ -3353,6 +3398,7 @@ const M2_FIELDS = [
   {key:'status', label:'Status', required:true},
   {key:'remarks', label:'Reason (categorized, e.g. Dump Reason / Sub Status)', required:false},
   {key:'salesRemark', label:'Last Remark / Follow-up note from Sales (free text — used as the Not Connected reason)', required:false},
+  {key:'subResponse', label:'Last Sub Response (e.g. 4QT "Last Sub Response Type(Sales)" — used as the Not Connected reason when Reason is blank)', required:false},
   {key:'date', label:'Date Assigned (e.g. Enquiry Date / Created On)', required:false},
   {key:'ageField', label:'Lead Age in days (optional — e.g. "Opportunity Age"; calculated from Date if not present)', required:false},
   {key:'followUpCount', label:'Follow-up Count (optional — e.g. "Follow Up Counter"; left blank if not tracked)', required:false},
@@ -3443,7 +3489,8 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
     const sourceRaw = Utils.val(row, map.source);
     const agency = Utils.val(row, map.agency);
     const originalStatus = Utils.val(row, map.status);
-    const remarks = Utils.val(row, map.remarks);
+    let remarks = Utils.val(row, map.remarks);
+    const subResponse = map.subResponse ? Utils.val(row, map.subResponse) : '';
     const salesRemark = Utils.val(row, map.salesRemark);
     const date = Utils.val(row, map.date);
     const ageRaw = Utils.val(row, map.ageField);
@@ -3464,6 +3511,9 @@ M2._processFile = function(file, map, defaultCrmLabel, leads, excludeStats){
       else if(/requirement\s*mis\s*match|mis\s*match|mis\s*requirement|req(uirement)?\s*mismatch/.test(sl)) statusClass = 'req_mismatch';
     }
 
+    // 4QT keeps the Not Connected reason ("No Response.", "Not Reachable/Switched Off.")
+    // in Last Sub Response, not in Dump Reason — use it when the Reason column is empty.
+    if(Utils.isBlank(remarks) && statusClass==='not_connected' && !Utils.isBlank(subResponse)) remarks = String(subResponse).trim().replace(/\.+$/,'');
     const resolved = Utils.resolveSource(sourceRaw);
     const isPerformance = Utils.isPerformanceCategory(resolved.category);
 
@@ -4271,8 +4321,9 @@ M2.renderReasonAndAgingBreakdowns = function(leads){
   const at = document.getElementById('m2-aging-title');
   if(at) at.innerHTML = `Aging breakdown <small>${Utils.escapeHtml(statusText)}</small>`;
   const byReason = {};
+  const NEW_TEXT = 'New — not called yet (no reason expected)';
   ncLeads.forEach(l=>{
-    const key = l.remarks || NO_REASON_TEXT;
+    const key = l.remarks || (l.statusClass==='new' ? NEW_TEXT : NO_REASON_TEXT);
     byReason[key] = (byReason[key]||0) + 1;
   });
   const reasonRows = Object.entries(byReason).sort((a,b)=>b[1]-a[1]).slice(0,25);
@@ -4289,6 +4340,7 @@ M2.renderReasonAndAgingBreakdowns = function(leads){
         const reason = reasonRows[+tr.dataset.rIdx][0];
         // Keeps the current Lead Status selection; blank remarks can't be matched as a filter value.
         if(reason === NO_REASON_TEXT){ Utils.toast('These leads have no remark on file.'); return; }
+        if(reason === NEW_TEXT){ M2.setSelectedStatuses ? M2.setSelectedStatuses(['New']) : Utils.toast('These are New leads — no call made yet.'); return; }
         M2.table.setFilters({remarks: reason}, true);
       });
     });
@@ -5628,8 +5680,10 @@ M4.applyTemplate = function(str, isSubject){
   // was typed. resolveSource's own fallback echoes back the raw input as "canonical"
   // when nothing matches, so check .unmapped rather than relying on .canonical being
   // empty — it never is.
-  const sourceInfo = M4.source ? Utils.resolveSource(M4.source) : null;
-  const resolvedSource = sourceInfo && !sourceInfo.unmapped ? sourceInfo.canonical : (M4.source ? Utils.titleCase(M4.source) : '');
+  // Mapping in 4QT is done on the Sub Source, so the mail uses exactly what was
+  // picked/typed (e.g. "AJN", "META-MV", "GT, New Discovery, GTAW, GTPL") —
+  // no conversion to the parent source name and no case changes.
+  const resolvedSource = M4.source ? M4.source.split(',').map(x=>x.trim()).filter(Boolean).join(', ') : '';
 
   const blank = {project: Utils.isBlank(M4.project), source: Utils.isBlank(M4.source)};
   const vars = {
@@ -5807,7 +5861,11 @@ Utils._daysSince = function(iso){ if(!iso) return 9999; const d=new Date(iso+'T0
    opts.getOptions() → [{value, label, hint, group, terms}]
    opts.allowNew / opts.newLabel(text) → offer "use what I typed"            */
 Utils.Combo = function(input, opts){
-  const field = input.parentElement; field.classList.add('combo');
+  // wrap the input so the caret, ✕ and the list sit on the input itself — not
+  // on the whole field, which can also hold a warning line below the input
+  const outer = input.parentElement; outer.classList.add('combo-field');
+  const field = document.createElement('div'); field.className = 'combo';
+  outer.insertBefore(field, input); field.appendChild(input);
   input.setAttribute('autocomplete','off'); input.readOnly = true; input.classList.add('combo-input');
   input.placeholder = opts.placeholder || 'Click to choose or search…';
   const caret = document.createElement('span'); caret.className='combo-caret'; caret.textContent='▾'; field.appendChild(caret);
@@ -5822,16 +5880,25 @@ Utils.Combo = function(input, opts){
   const render = ()=>{
     const q = Utils.normLoose(search.value); const qt = q ? q.split(' ') : [];
     let opt = opts.getOptions(search.value);
+    let selKeys = new Set();
+    if(opts.multi){
+      const sel = input.value.split(',').map(x=>x.trim()).filter(Boolean);
+      selKeys = new Set(sel.map(x=>Utils.normLoose(x)));
+      const known = {}; opt.forEach(o=>{ known[Utils.normLoose(o.value)] = o; });
+      const top = sel.map(v=> Object.assign({}, known[Utils.normLoose(v)] || {value:v, label:v}, {group:'Selected — click to remove'}));
+      opt = top.concat(opt.filter(o=>!selKeys.has(Utils.normLoose(o.value))));
+    }
     if(qt.length) opt = opt.filter(o=>{ const hay = Utils.normLoose([o.label,o.value,o.hint,(o.terms||[]).join(' ')].join(' ')); return qt.every(t=>hay.indexOf(t)>=0); })
                          .sort((a,b)=> (Utils.normLoose(b.label).startsWith(q)?1:0) - (Utils.normLoose(a.label).startsWith(q)?1:0));
     else opt = opt.filter(o=>!o.hideUntilSearch);
     items = opt.slice(0, 300);
     const typed = search.value.trim();
-    const exact = typed && opt.some(o=>Utils.normLoose(o.value)===q);
+    const exact = typed && (opt.some(o=>Utils.normLoose(o.value)===q) || selKeys.has(q));
     let html = '', lastGroup = null;
     items.forEach((o,i)=>{
       if(o.group && o.group!==lastGroup){ html += `<div class="combo-group">${Utils.escapeHtml(o.group)}</div>`; lastGroup = o.group; }
-      html += `<div class="combo-opt" data-i="${i}"><span>${Utils.escapeHtml(o.label)}</span>${o.hint?`<small>${Utils.escapeHtml(o.hint)}</small>`:''}</div>`;
+      const isSel = selKeys.has(Utils.normLoose(o.value));
+      html += `<div class="combo-opt${isSel?' selected':''}" data-i="${i}"><span>${isSel?'✓ ':''}${Utils.escapeHtml(o.label)}</span>${o.hint?`<small>${Utils.escapeHtml(o.hint)}</small>`:''}</div>`;
     });
     if(opts.allowNew && typed && !exact){
       items.push({value:typed, label:typed, isNew:true});
@@ -5839,10 +5906,22 @@ Utils.Combo = function(input, opts){
     }
     if(!items.length) html = `<div class="combo-empty">No match${opts.allowNew?'':' — check the spelling'}</div>`;
     list.innerHTML = html; active = items.length ? 0 : -1; highlight();
-    list.querySelectorAll('.combo-opt').forEach(el=> el.addEventListener('mousedown', e=>{ e.preventDefault(); pick(+el.dataset.i); }));
+    list.querySelectorAll('.combo-opt').forEach(el=> el.addEventListener('mousedown', e=>{ e.preventDefault(); e.stopPropagation(); pick(+el.dataset.i); }));
   };
   const highlight = ()=>{ list.querySelectorAll('.combo-opt').forEach(el=> el.classList.toggle('active', +el.dataset.i===active)); const a=list.querySelector('.combo-opt.active'); if(a) a.scrollIntoView({block:'nearest'}); };
-  const pick = i=>{ const o = items[i]; if(!o) return; close(); setValue(o.value); };
+  const selectedList = ()=> input.value.split(',').map(x=>x.trim()).filter(Boolean);
+  const pick = i=>{ const o = items[i]; if(!o) return;
+    if(opts.multi){
+      // click once to add, click again to remove — the list stays open so
+      // several sub sources can be ticked/unticked in one go
+      let cur = selectedList();
+      const k = Utils.normLoose(o.value);
+      if(cur.some(x=>Utils.normLoose(x)===k)) cur = cur.filter(x=>Utils.normLoose(x)!==k);
+      else cur.push(o.value);
+      setValue(cur.join(', '));
+      search.value = ''; render(); search.focus();
+    } else { close(); setValue(o.value); }
+  };
   const open = ()=>{ if(!panel.hidden) return; document.querySelectorAll('.combo-panel').forEach(p=>{ if(p!==panel) p.hidden = true; }); panel.hidden = false; search.value=''; render(); search.focus(); };
   const close = ()=>{ panel.hidden = true; };
   input.addEventListener('click', open); caret.addEventListener('click', open);
@@ -5855,7 +5934,7 @@ Utils.Combo = function(input, opts){
     else if(e.key==='Enter'){ e.preventDefault(); if(active>=0) pick(active); }
     else if(e.key==='Escape'){ close(); input.focus(); }
   });
-  document.addEventListener('mousedown', e=>{ if(!field.contains(e.target)) close(); });
+  document.addEventListener('mousedown', e=>{ const path = e.composedPath ? e.composedPath() : [e.target]; if(!path.includes(field)) close(); });
   syncClear();
   return {refresh: syncClear, open};
 };
@@ -5976,7 +6055,7 @@ document.addEventListener('DOMContentLoaded', function(){
   const hint = document.createElement('div'); hint.id = 'm4-project-hint'; pIn.parentElement.insertAdjacentElement('afterend', hint);
   M4._combos = {
     project: Utils.Combo(pIn, {getOptions:M4.projectOptions, allowNew:true, searchPlaceholder:'Search project, old name, sales head or city…', placeholder:'Click to choose a project…', newLabel:t=>'+ Use "'+t+'" as a new project', onPick:v=>M4._afterProjectPick(v)}),
-    source:  Utils.Combo(sIn, {getOptions:M4.sourceOptions, allowNew:true, searchPlaceholder:'Search sub source (e.g. META-MV, Digital Marketing XD, AJN)…', placeholder:'Click to choose a sub source…', newLabel:t=>'+ Use "'+t+'"'}),
+    source:  Utils.Combo(sIn, {getOptions:M4.sourceOptions, allowNew:true, multi:true, searchPlaceholder:'Search sub source — pick one or more (e.g. GT, New Discovery, GTAW, GTPL)…', placeholder:'Click to choose sub source(s)…', newLabel:t=>'+ Use "'+t+'"'}),
     head:    Utils.Combo(hIn, {getOptions:M4.salesHeadOptions, allowNew:true, searchPlaceholder:'Search name or city…', placeholder:'Click to choose the Sales Head…', newLabel:t=>'+ Use "'+t+'"'})
   };
   pIn.addEventListener('input', M4.updateProjectHint);
@@ -6231,6 +6310,18 @@ Settings.renderMailTemplateTable = function(){
 </script>
 <script>
 // app initialized
+</script>
+<script>
+/* Phone menu: the side menu collapses into a "☰" button at the top */
+document.addEventListener('DOMContentLoaded', function(){
+  const rail = document.querySelector('.rail'), btn = document.getElementById('railMenuBtn'), cur = document.getElementById('railCurrent');
+  if(!rail || !btn) return;
+  const setLabel = ()=>{ const a = document.querySelector('.rail-item.active .lbl'); if(a && cur) cur.textContent = a.textContent; };
+  setLabel();
+  btn.addEventListener('click', e=>{ e.stopPropagation(); rail.classList.toggle('open'); });
+  document.querySelectorAll('.rail-item').forEach(it=> it.addEventListener('click', ()=>{ rail.classList.remove('open'); setTimeout(setLabel, 0); window.scrollTo(0,0); }));
+  document.addEventListener('click', e=>{ if(rail.classList.contains('open') && !rail.contains(e.target)) rail.classList.remove('open'); });
+});
 </script>
 </body>
 </html>
