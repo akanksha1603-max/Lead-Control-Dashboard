@@ -827,10 +827,21 @@ table.data td.wrap,table.data th.wrap{white-space:normal;}
       <div class="view-head">
         <div>
           <h1>Settings</h1>
-          <p>Customize the Source Master, Location Master, and matching thresholds this dashboard uses — no code changes needed. Saved in this browser so it's remembered next time you open the file.</p>
+          <p>Customize the Source Master, Location Master, and matching thresholds this dashboard uses — no code changes needed. Connect the shared settings below so everyone uses the same settings and nothing is lost when a browser is cleared.</p>
         </div>
       </div>
       <div class="help-note" id="set-storage-note" style="display:none;">This browser is blocking local storage, so changes will only last for this session — use Export below to save a copy you can re-import next time.</div>
+
+      <div class="card" id="sync-card">
+        <h2>☁ Shared settings (Google Sheet)</h2>
+        <div class="help-note">Connect once with the same Apps Script link you use for the live master sheet. Then the Sales Head email list, CC list, "Dear … Sir" names, project list, mail templates, Source / Location masters and thresholds are saved in the Google Sheet (tab <b>Dashboard Settings</b>) and shared by everyone who connects — nothing is lost if a browser is cleared. Every change saves automatically.</div>
+        <div class="mail-grid" style="display:grid;grid-template-columns:2fr 1fr;gap:12px;">
+          <div class="field"><label>Apps Script link (with ?token=…)</label><input type="text" id="sync-url" placeholder="https://script.google.com/macros/s/…/exec?token=…"></div>
+          <div class="field"><label>Your name (shown as "last changed by")</label><input type="text" id="sync-by" placeholder="Akanksha Tyagi"></div>
+        </div>
+        <div class="btn-row"><button class="btn btn-primary" id="sync-connect" type="button">Connect &amp; share</button><button class="btn" id="sync-pull" type="button">↻ Load latest from sheet</button><button class="btn" id="sync-now" type="button">⬆ Save all to sheet now</button><button class="btn" id="sync-disconnect" type="button">Disconnect</button></div>
+        <div class="mini-note" id="sync-status" style="margin-top:8px;"></div>
+      </div>
 
       <div class="card">
         <h2>General</h2>
@@ -6497,6 +6508,7 @@ M2M.DEFAULT_TO = {
   'mayank bisht':'mayank.bisht@investoxpert.com', 'biswajit ghosh':'biswajit.ghosh@investoxpert.com',
   'amit madaan':'amit@investoxpert.com', 'amit madan':'amit@investoxpert.com', 'birjesh srivastava':'birjesh.srivastava@investoxpert.com'
 };
+M2M.firstName = function(head){ return String(head||'').trim().split(/\s+/)[0] || ''; };
 M2M.DEFAULT_GREET = {'amit madaan':'Amit Sir', 'amit madan':'Amit Sir'};
 M2M.conf = function(){
   const S = Utils.Settings;
@@ -6540,7 +6552,11 @@ M2M.period = function(leads){
 };
 M2M.periodText = function(){ const c = M2M.conf(); const p = M2M.period(); return {subject: c.periodSubject || p.subject, long: c.periodLong || p.long, short: p.short}; };
 M2M.headCfg = function(head){ const c = M2M.conf(), k = Utils.normLoose(head); const h = c.heads[head] || {};
-  return {to: h.to !== undefined ? h.to : (M2M.DEFAULT_TO[k] || ''), cc: h.cc || '', greet: h.greet || M2M.DEFAULT_GREET[k] || head}; };
+  // Sales Heads are addressed as "<First name> Sir" (e.g. "Dear Santanu Sir").
+  // An old saved greeting that is just the full name is upgraded automatically.
+  const def = M2M.DEFAULT_GREET[k] || (M2M.firstName(head) + ' Sir');
+  const saved = h.greet && Utils.normLoose(h.greet) !== k ? h.greet : '';
+  return {to: h.to !== undefined ? h.to : (M2M.DEFAULT_TO[k] || ''), cc: h.cc || '', greet: saved || def}; };
 M2M.recipients = function(head){
   const c = M2M.conf(), h = M2M.headCfg(head);
   const clean = v=> String(v||'').split(/[;,\s]+/).map(x=>x.trim()).filter(x=>/@/.test(x));
@@ -6563,8 +6579,9 @@ M2M.build = function(grp){
 </ol>
 <p>Please review the report and ensure all necessary corrections are completed.</p>
 <p><b>The Weekly Review Meeting will be based on the data reflected in this report.</b> Therefore, your attention to the accuracy of the CRM data is important.</p>
+<p><b>Kindly acknowledge the receipt of this email</b> and confirm once the corrections have been completed.</p>
 <p>Regards,<br>${esc(c.signature||'')}</p></div>`;
-  const text = `Dear ${h.greet},\n\nPlease find attached the New & Not Connected Leads Count Report for the period ${p.long} for ${team}.\n\nAs this report will serve as the primary reference for the upcoming Weekly Review Meeting and management review, kindly ensure the following:\n\n1. All lead dispositions are correctly updated in the CRM.\n2. No leads are incorrectly marked as "Not Connected".\n3. CRM statuses accurately reflect the actual and latest lead status.\n4. Any pending or incorrect dispositions are updated before the review.\n\nPlease review the report and ensure all necessary corrections are completed.\n\nThe Weekly Review Meeting will be based on the data reflected in this report. Therefore, your attention to the accuracy of the CRM data is important.\n\nRegards,\n${c.signature||''}`;
+  const text = `Dear ${h.greet},\n\nPlease find attached the New & Not Connected Leads Count Report for the period ${p.long} for ${team}.\n\nAs this report will serve as the primary reference for the upcoming Weekly Review Meeting and management review, kindly ensure the following:\n\n1. All lead dispositions are correctly updated in the CRM.\n2. No leads are incorrectly marked as "Not Connected".\n3. CRM statuses accurately reflect the actual and latest lead status.\n4. Any pending or incorrect dispositions are updated before the review.\n\nPlease review the report and ensure all necessary corrections are completed.\n\nThe Weekly Review Meeting will be based on the data reflected in this report. Therefore, your attention to the accuracy of the CRM data is important.\n\nKindly acknowledge the receipt of this email and confirm once the corrections have been completed.\n\nRegards,\n${c.signature||''}`;
   return {subject, html, text};
 };
 /* Attachment = the dashboard's "Download report (title + total row)" layout, for this head (+ region) */
@@ -6687,6 +6704,169 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 </script>
 
+
+<script>
+/* ============================================================
+   SHARED SETTINGS — stored in the Google Sheet ("Dashboard Settings" tab)
+   through the same Apps Script Web App. Everyone who connects with the link
+   shares the same email list, CC list, project list, sender settings, mail
+   templates, Source / Location masters and thresholds. Only the link itself
+   (and the API key) stay in each browser.
+   ============================================================ */
+var SYNC = { LOCAL_KEYS: ['m1pMasterLive','sharedSync','googleApiKey','liveConnections'], snapshot:{}, timer:null, busy:false };
+SYNC.conf = function(){ if(!Utils.Settings.sharedSync) Utils.Settings.sharedSync = {url:'', by:'', lastSync:'', lastBy:''}; return Utils.Settings.sharedSync; };
+SYNC.url = function(){ return (SYNC.conf().url||'').trim(); };
+/* what of a key is shared (reportMail keeps its sender link + per-report choices local) */
+SYNC.sharedValue = function(key){
+  const v = Utils.Settings[key];
+  if(key==='reportMail' && v){ const c = Object.assign({}, v); delete c.senderUrl; delete c.manual; delete c.periodLong; return c; }
+  return v;
+};
+SYNC.sharedKeys = function(){ return Object.keys(Utils.Settings).filter(k=> SYNC.LOCAL_KEYS.indexOf(k)<0); };
+SYNC.str = v=> JSON.stringify(v===undefined ? null : v);
+SYNC.takeSnapshot = function(){ SYNC.snapshot = {}; SYNC.sharedKeys().forEach(k=> SYNC.snapshot[k] = SYNC.str(SYNC.sharedValue(k))); };
+SYNC.setStatus = function(msg, tone){
+  const el = document.getElementById('sync-status'); if(el){ el.innerHTML = msg; el.style.color = tone==='bad' ? 'var(--red)' : tone==='ok' ? 'var(--green)' : 'var(--text-muted)'; }
+  const pill = document.getElementById('sync-pill'); if(pill){ pill.textContent = tone==='bad' ? '☁ Shared settings: not syncing' : SYNC.url() ? '☁ Shared settings: on' : '☁ Settings: this browser only'; pill.style.color = tone==='bad' ? '#F4A3A3' : SYNC.url() ? '#9FE1BE' : '#7C8390'; }
+};
+SYNC.fetchRemote = async function(){
+  const u = SYNC.url(); const sep = u.indexOf('?')>=0 ? '&' : '?';
+  const res = await fetch(u + sep + 'action=getSettings&_=' + Date.now());
+  const j = await res.json();
+  if(j.error) throw new Error(j.error);
+  return j; // {settings:{key:value}, updated:{key:{at,by}}}
+};
+SYNC.push = async function(changes){
+  const u = SYNC.url(); if(!u || !Object.keys(changes).length) return;
+  const by = SYNC.conf().by || (Utils.Settings.reportMail && Utils.Settings.reportMail.signature) || '';
+  const res = await fetch(u, {method:'POST', body: JSON.stringify({action:'saveSettings', changes, by})});
+  const j = await res.json().catch(()=>({}));
+  if(j && j.error) throw new Error(j.error);
+};
+/* Apply the sheet's settings to this browser. Returns true if anything changed. */
+SYNC.applyRemote = function(remote){
+  let changed = false;
+  Object.entries(remote.settings||{}).forEach(([k,v])=>{
+    if(SYNC.LOCAL_KEYS.indexOf(k)>=0) return;
+    let nv = v;
+    if(k==='reportMail'){ const loc = Utils.Settings.reportMail||{}; nv = Object.assign({}, v, {senderUrl:loc.senderUrl||'', manual:loc.manual||{}, periodLong:loc.periodLong||''}); }
+    if(SYNC.str(SYNC.sharedValue(k)) !== SYNC.str(SYNC.sharedValueOf(k, nv))){
+      Utils.Settings[k] = nv; changed = true;
+    }
+  });
+  return changed;
+};
+SYNC.sharedValueOf = function(k, v){ if(k==='reportMail' && v){ const c = Object.assign({}, v); delete c.senderUrl; delete c.manual; delete c.periodLong; return c; } return v; };
+/* Push only the keys that changed since the last sync */
+SYNC.schedulePush = function(){
+  if(!SYNC.url() || SYNC.applying) return;
+  clearTimeout(SYNC.timer);
+  SYNC.timer = setTimeout(async ()=>{
+    const changes = {};
+    SYNC.sharedKeys().forEach(k=>{ const s = SYNC.str(SYNC.sharedValue(k)); if(SYNC.snapshot[k] !== s) changes[k] = SYNC.sharedValue(k); });
+    if(!Object.keys(changes).length) return;
+    SYNC.setStatus('Saving to the Google Sheet…');
+    try{
+      await SYNC.push(changes);
+      Object.keys(changes).forEach(k=> SYNC.snapshot[k] = SYNC.str(changes[k]));
+      const c = SYNC.conf(); c.lastSync = new Date().toLocaleString(); SYNC.applying = true; Utils._origSaveSettings(); SYNC.applying = false;
+      SYNC.setStatus(`✓ Saved to the Google Sheet at ${Utils.escapeHtml(c.lastSync)} (${Object.keys(changes).length} setting group${Object.keys(changes).length>1?'s':''})`, 'ok');
+    }catch(e){ SYNC.setStatus('✕ Could not save to the Google Sheet: ' + Utils.escapeHtml(e.message) + ' — your change is kept in this browser and will be retried on the next change.', 'bad'); }
+  }, 1500);
+};
+/* Wrap the existing save so every settings change also goes to the sheet */
+Utils._origSaveSettings = Utils.saveSettings;
+Utils.saveSettings = function(){ const r = Utils._origSaveSettings(); SYNC.schedulePush(); return r; };
+
+/* On page open: load the shared settings; if they differ, store them and reload once */
+SYNC.pullOnLoad = async function(){
+  if(!SYNC.url()){ SYNC.setStatus('Not connected — settings are kept in this browser only.'); return; }
+  SYNC.setStatus('Loading shared settings from the Google Sheet…');
+  try{
+    const remote = await SYNC.fetchRemote();
+    const keys = Object.keys(remote.settings||{});
+    if(!keys.length){ // empty sheet: seed it with this browser's settings
+      const all = {}; SYNC.sharedKeys().forEach(k=> all[k] = SYNC.sharedValue(k));
+      await SYNC.push(all); SYNC.takeSnapshot();
+      SYNC.setStatus('✓ The Google Sheet had no settings yet — this browser\'s settings were saved there and are now shared.', 'ok');
+      return;
+    }
+    SYNC.applying = true;
+    const changed = SYNC.applyRemote(remote);
+    if(changed){ Utils._origSaveSettings(); }
+    SYNC.applying = false;
+    SYNC.takeSnapshot();
+    const c = SYNC.conf(); c.lastSync = new Date().toLocaleString(); Utils._origSaveSettings();
+    if(changed && !sessionStorage.getItem('lcd_sync_reloaded')){
+      sessionStorage.setItem('lcd_sync_reloaded','1'); location.reload(); return;
+    }
+    sessionStorage.removeItem('lcd_sync_reloaded');
+    SYNC.setStatus(`✓ Using the shared settings from the Google Sheet (loaded ${Utils.escapeHtml(c.lastSync)}).`, 'ok');
+  }catch(e){
+    SYNC.applying = false;
+    SYNC.setStatus('✕ Could not load the shared settings: ' + Utils.escapeHtml(e.message) + ' — using this browser\'s copy for now.', 'bad');
+  }
+};
+/* When you come back to the tab, check whether a colleague changed something */
+SYNC.checkForUpdates = async function(){
+  if(!SYNC.url() || SYNC.busy) return; SYNC.busy = true;
+  try{
+    const remote = await SYNC.fetchRemote();
+    const diff = Object.entries(remote.settings||{}).some(([k,v])=> SYNC.LOCAL_KEYS.indexOf(k)<0 && SYNC.snapshot[k] !== undefined && SYNC.str(SYNC.sharedValueOf(k,v)) !== SYNC.snapshot[k]);
+    const bar = document.getElementById('sync-banner');
+    if(diff && bar) bar.style.display = 'flex';
+  }catch(e){} finally { SYNC.busy = false; }
+};
+
+document.addEventListener('DOMContentLoaded', function(){
+  // status pill in the side menu
+  const foot = document.querySelector('.rail-foot');
+  if(foot){ const p = document.createElement('div'); p.id = 'sync-pill'; p.style.cssText = 'margin-bottom:6px;font-weight:600;'; foot.insertBefore(p, foot.firstChild); }
+  // "updated by a colleague" banner
+  const bar = document.createElement('div'); bar.id = 'sync-banner';
+  bar.style.cssText = 'display:none;position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:500;background:#1F4E78;color:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.25);gap:12px;align-items:center;font-size:13px;';
+  bar.innerHTML = 'Shared settings were updated by a colleague. <button class="btn btn-sm" id="sync-reload" style="background:#fff;">Reload to apply</button> <button class="btn btn-sm" id="sync-dismiss" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.4)">Later</button>';
+  document.body.appendChild(bar);
+  document.getElementById('sync-reload').addEventListener('click', ()=> location.reload());
+  document.getElementById('sync-dismiss').addEventListener('click', ()=> bar.style.display='none');
+  window.addEventListener('focus', SYNC.checkForUpdates);
+  setInterval(SYNC.checkForUpdates, 5*60*1000);
+
+  // Settings card
+  const urlIn = document.getElementById('sync-url'), byIn = document.getElementById('sync-by');
+  if(urlIn){
+    const c = SYNC.conf();
+    urlIn.value = c.url || (Utils.Settings.m1pMasterLive && Utils.Settings.m1pMasterLive.url) || (Utils.Settings.reportMail && Utils.Settings.reportMail.senderUrl) || '';
+    byIn.value = c.by || (Utils.Settings.reportMail && Utils.Settings.reportMail.signature) || '';
+    byIn.addEventListener('change', ()=>{ SYNC.conf().by = byIn.value.trim(); Utils._origSaveSettings(); });
+    document.getElementById('sync-connect').addEventListener('click', async ()=>{
+      const u = urlIn.value.trim(); if(!u){ Utils.toast('Paste the Apps Script link first'); return; }
+      const c = SYNC.conf(); c.url = u; c.by = byIn.value.trim();
+      // the same link also powers the live master sheet and the report emails
+      if(!Utils.Settings.m1pMasterLive) Utils.Settings.m1pMasterLive = {url:u, tab:'Master Sheet'};
+      if(Utils.Settings.reportMail && !Utils.Settings.reportMail.senderUrl) Utils.Settings.reportMail.senderUrl = u;
+      Utils._origSaveSettings();
+      try{
+        SYNC.setStatus('Connecting…');
+        const remote = await SYNC.fetchRemote();
+        if(Object.keys(remote.settings||{}).length){
+          if(!confirm('The Google Sheet already has shared settings. Use them in this browser? (Your browser\'s own email list, project list etc. will be replaced by the shared ones.)')) { SYNC.setStatus('Connected, but shared settings were not loaded.'); return; }
+          sessionStorage.removeItem('lcd_sync_reloaded'); SYNC.applying = true; SYNC.applyRemote(remote); SYNC.applying = false; Utils._origSaveSettings(); location.reload();
+        } else {
+          const all = {}; SYNC.sharedKeys().forEach(k=> all[k] = SYNC.sharedValue(k));
+          await SYNC.push(all); SYNC.takeSnapshot();
+          SYNC.setStatus('✓ Connected. Your settings were saved to the Google Sheet and are now shared with everyone who connects.', 'ok');
+        }
+      }catch(e){ SYNC.setStatus('✕ ' + Utils.escapeHtml(e.message), 'bad'); }
+    });
+    document.getElementById('sync-now').addEventListener('click', ()=>{ SYNC.takeSnapshot(); SYNC.snapshot = {}; SYNC.schedulePush(); });
+    document.getElementById('sync-pull').addEventListener('click', ()=>{ sessionStorage.removeItem('lcd_sync_reloaded'); SYNC.pullOnLoad(); });
+    document.getElementById('sync-disconnect').addEventListener('click', ()=>{ SYNC.conf().url = ''; Utils._origSaveSettings(); SYNC.setStatus('Disconnected — settings are kept in this browser only.'); });
+  }
+  SYNC.takeSnapshot();
+  SYNC.pullOnLoad();
+});
+</script>
 
 </body>
 </html>
